@@ -2,7 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/akramarenkov/wrecker.svg)](https://pkg.go.dev/github.com/akramarenkov/wrecker)
 [![Go Report Card](https://goreportcard.com/badge/github.com/akramarenkov/wrecker)](https://goreportcard.com/report/github.com/akramarenkov/wrecker)
-[![codecov](https://codecov.io/gh/akramarenkov/wrecker/branch/master/graph/badge.svg?token=)](https://codecov.io/gh/akramarenkov/wrecker)
+[![codecov](https://codecov.io/gh/akramarenkov/wrecker/branch/master/graph/badge.svg?token=Ze9aBpHbGE)](https://codecov.io/gh/akramarenkov/wrecker)
 
 ## Purpose
 
