@@ -44,35 +44,43 @@ func New(callsLimit int, sizeLimit int) *Limiter {
 // Returns a conclusion about reaching the limits on the number of completed calls
 // and/or the size of processed data.
 func (lmt *Limiter) IsReached(size int) bool {
-	if lmt.callsLimit >= 0 {
-		if lmt.calls >= lmt.callsLimit {
-			return true
-		}
-
-		lmt.calls++
+	if lmt.isCallsReached() {
+		return true
 	}
 
-	if lmt.sizeLimit >= 0 {
-		if lmt.size >= lmt.sizeLimit {
-			return true
-		}
-
-		sum := lmt.size + size
-
-		// sum overflowed, size value is set to the maximum for the int type to return
-		// true on subsequent calls
-		if sum < lmt.size {
-			lmt.size = math.MaxInt
-			return true
-		}
-
-		// size is increased for checks on subsequent calls
-		lmt.size = sum
-
-		if lmt.size > lmt.sizeLimit {
-			return true
-		}
+	if lmt.sizeLimit < 0 {
+		return false
 	}
+
+	if lmt.size >= lmt.sizeLimit {
+		return true
+	}
+
+	increased := lmt.size + size
+
+	// increased overflowed, size value is set to the maximum for the int type to return
+	// true on subsequent calls
+	if increased < lmt.size {
+		lmt.size = math.MaxInt
+		return true
+	}
+
+	// size is increased for checks on subsequent calls
+	lmt.size = increased
+
+	return lmt.size > lmt.sizeLimit
+}
+
+func (lmt *Limiter) isCallsReached() bool {
+	if lmt.callsLimit < 0 {
+		return false
+	}
+
+	if lmt.calls == lmt.callsLimit {
+		return true
+	}
+
+	lmt.calls++
 
 	return false
 }
