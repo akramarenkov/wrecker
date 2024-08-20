@@ -22,8 +22,8 @@ func ExampleWrecker() {
 		ReadCallsLimit:  1,
 		ReadSizeLimit:   2 * len(data),
 		ReadWriter:      buffer,
-		WriteCallsLimit: 2,
-		WriteSizeLimit:  len(data),
+		WriteCallsLimit: 3,
+		WriteSizeLimit:  2 * len(data),
 	}
 
 	wrecker := wrecker.New(opts)
@@ -38,7 +38,13 @@ func ExampleWrecker() {
 		fmt.Println(err)
 	}
 
-	fmt.Println(buffer.String() == string(data))
+	fmt.Println(buffer.String() == string(data)+string(data))
+
+	if _, err := wrecker.Write(data); err != nil {
+		fmt.Println(err)
+	}
+
+	fmt.Println(buffer.String() == string(data)+string(data))
 
 	payload := make([]byte, len(data))
 
@@ -57,6 +63,7 @@ func ExampleWrecker() {
 	fmt.Println(string(payload) == string(data))
 
 	// Output:
+	// true
 	// true
 	// limit is reached
 	// true

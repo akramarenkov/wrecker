@@ -28,7 +28,7 @@ var (
 )
 
 func main() {
-    data := []byte("some data")
+data := []byte("some data")
 
     buffer := bytes.NewBuffer(nil)
 
@@ -37,8 +37,8 @@ func main() {
         ReadCallsLimit:  1,
         ReadSizeLimit:   2 * len(data),
         ReadWriter:      buffer,
-        WriteCallsLimit: 2,
-        WriteSizeLimit:  len(data),
+        WriteCallsLimit: 3,
+        WriteSizeLimit:  2 * len(data),
     }
 
     wrecker := wrecker.New(opts)
@@ -53,7 +53,13 @@ func main() {
         fmt.Println(err)
     }
 
-    fmt.Println(buffer.String() == string(data))
+    fmt.Println(buffer.String() == string(data)+string(data))
+
+    if _, err := wrecker.Write(data); err != nil {
+        fmt.Println(err)
+    }
+
+    fmt.Println(buffer.String() == string(data)+string(data))
 
     payload := make([]byte, len(data))
 
@@ -72,6 +78,7 @@ func main() {
     fmt.Println(string(payload) == string(data))
 
     // Output:
+    // true
     // true
     // limit is reached
     // true

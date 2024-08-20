@@ -62,122 +62,130 @@ func testWreckerCalls(t *testing.T, callsLimit int) {
 	}
 }
 
-func testWreckerSize(t *testing.T, blockSize int, sizeLimit int) {
-	unerringIterations := sizeLimit / blockSize
+func testWreckerSize(t *testing.T, blockSize int, readSizeLimit int) {
+	readUnerringIterations := readSizeLimit / blockSize
 	require.GreaterOrEqual(
 		t,
-		unerringIterations,
+		readUnerringIterations,
 		0,
-		"block size: %v, size limit: %v",
+		"block size: %v, read size limit: %v",
 		blockSize,
-		sizeLimit,
+		readSizeLimit,
 	)
 
-	erroneousIterations := unerringIterations + erroneousIterationsExcess
+	readErroneousIterations := readUnerringIterations + erroneousIterationsExcess
 	require.Positive(
 		t,
-		erroneousIterations,
-		"block size: %v, size limit: %v",
+		readErroneousIterations,
+		"block size: %v, read size limit: %v",
 		blockSize,
-		sizeLimit,
+		readSizeLimit,
 	)
+
+	// to make sure that read errors and inequality of the read data block to the
+	// written data block are caused by Wrecker
+	writeSizeLimit := readErroneousIterations * blockSize
+	writeUnerringIterations := readErroneousIterations
+	writeErroneousIterations := writeUnerringIterations + erroneousIterationsExcess
 
 	opts := Opts{
 		Error:           io.ErrClosedPipe,
 		ReadCallsLimit:  -1,
-		ReadSizeLimit:   sizeLimit,
+		ReadSizeLimit:   readSizeLimit,
 		ReadWriter:      bytes.NewBuffer(nil),
 		WriteCallsLimit: -1,
-		WriteSizeLimit:  sizeLimit,
+		WriteSizeLimit:  writeSizeLimit,
 	}
 
 	wrecker := New(opts)
 
 	writeBlock := make([]byte, blockSize)
-	writeBlock[0] = 1
-	writeBlock[len(writeBlock)-1] = 1
 
-	for range unerringIterations {
+	for id := range writeBlock {
+		writeBlock[id] = 1
+	}
+
+	for range writeUnerringIterations {
 		_, err := wrecker.Write(writeBlock)
 		require.NoError(
 			t,
 			err,
-			"block size: %v, size limit: %v",
+			"block size: %v, read size limit: %v",
 			blockSize,
-			sizeLimit,
+			readSizeLimit,
 		)
 	}
 
-	for range erroneousIterations {
+	for range writeErroneousIterations {
 		_, err := wrecker.Write(writeBlock)
 		require.Error(
 			t,
 			err,
-			"block size: %v, size limit: %v",
+			"block size: %v, read size limit: %v",
 			blockSize,
-			sizeLimit,
+			readSizeLimit,
 		)
 
 		require.Equal(
 			t,
 			opts.Error,
 			err,
-			"block size: %v, size limit: %v",
+			"block size: %v, read size limit: %v",
 			blockSize,
-			sizeLimit,
+			readSizeLimit,
 		)
 	}
 
-	for range unerringIterations {
+	for range readUnerringIterations {
 		readBlock := make([]byte, blockSize)
 
 		_, err := wrecker.Read(readBlock)
 		require.NoError(
 			t,
 			err,
-			"block size: %v, size limit: %v",
+			"block size: %v, read size limit: %v",
 			blockSize,
-			sizeLimit,
+			readSizeLimit,
 		)
 
 		require.Equal(
 			t,
 			writeBlock,
 			readBlock,
-			"block size: %v, size limit: %v",
+			"block size: %v, read size limit: %v",
 			blockSize,
-			sizeLimit,
+			readSizeLimit,
 		)
 	}
 
-	for range erroneousIterations {
+	for range readErroneousIterations {
 		readBlock := make([]byte, blockSize)
 
 		_, err := wrecker.Read(readBlock)
 		require.Error(
 			t,
 			err,
-			"block size: %v, size limit: %v",
+			"block size: %v, read size limit: %v",
 			blockSize,
-			sizeLimit,
+			readSizeLimit,
 		)
 
 		require.Equal(
 			t,
 			opts.Error,
 			err,
-			"block size: %v, size limit: %v",
+			"block size: %v, read size limit: %v",
 			blockSize,
-			sizeLimit,
+			readSizeLimit,
 		)
 
 		require.NotEqual(
 			t,
 			writeBlock,
 			readBlock,
-			"block size: %v, size limit: %v",
+			"block size: %v, read size limit: %v",
 			blockSize,
-			sizeLimit,
+			readSizeLimit,
 		)
 	}
 }
