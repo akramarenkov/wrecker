@@ -54,7 +54,7 @@ func ExampleWrecker() {
 		fmt.Println(err)
 	}
 
-	fmt.Println(string(payload) != string(data))
+	fmt.Println(string(payload) == string(data))
 
 	// Output:
 	// true
@@ -62,5 +62,5 @@ func ExampleWrecker() {
 	// true
 	// true
 	// limit is reached
-	// true
+	// false
 }

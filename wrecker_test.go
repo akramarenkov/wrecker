@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	erroneousIterationsExcess = 3
+	erroneousIterationsExcess = 10
 )
 
 func TestWrecker(t *testing.T) {
@@ -26,11 +26,11 @@ func testWreckerCalls(t *testing.T, callsLimit int) {
 	unerringIterations := callsLimit
 	require.GreaterOrEqual(t, unerringIterations, 0, "calls limit: %v", callsLimit)
 
-	erroneousIterations := erroneousIterationsExcess * (unerringIterations + 1)
+	erroneousIterations := unerringIterations + erroneousIterationsExcess
 	require.Positive(t, erroneousIterations, "calls limit: %v", callsLimit)
 
 	opts := Opts{
-		Error:           io.ErrUnexpectedEOF,
+		Error:           io.ErrClosedPipe,
 		ReadCallsLimit:  callsLimit,
 		ReadSizeLimit:   -1,
 		WriteCallsLimit: callsLimit,
@@ -73,7 +73,7 @@ func testWreckerSize(t *testing.T, blockSize int, sizeLimit int) {
 		sizeLimit,
 	)
 
-	erroneousIterations := erroneousIterationsExcess * (unerringIterations + 1)
+	erroneousIterations := unerringIterations + erroneousIterationsExcess
 	require.Positive(
 		t,
 		erroneousIterations,
@@ -83,7 +83,7 @@ func testWreckerSize(t *testing.T, blockSize int, sizeLimit int) {
 	)
 
 	opts := Opts{
-		Error:           io.ErrUnexpectedEOF,
+		Error:           io.ErrClosedPipe,
 		ReadCallsLimit:  -1,
 		ReadSizeLimit:   sizeLimit,
 		ReadWriter:      bytes.NewBuffer(nil),
@@ -180,4 +180,16 @@ func testWreckerSize(t *testing.T, blockSize int, sizeLimit int) {
 			sizeLimit,
 		)
 	}
+}
+
+func TestWreckerUnspecifiedError(t *testing.T) {
+	wrecker := New(Opts{})
+
+	_, err := wrecker.Write(nil)
+	require.Error(t, err)
+	require.Equal(t, io.ErrUnexpectedEOF, err)
+
+	_, err = wrecker.Read(nil)
+	require.Error(t, err)
+	require.Equal(t, io.ErrUnexpectedEOF, err)
 }

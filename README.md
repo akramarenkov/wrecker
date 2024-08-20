@@ -69,7 +69,7 @@ func main() {
         fmt.Println(err)
     }
 
-    fmt.Println(string(payload) != string(data))
+    fmt.Println(string(payload) == string(data))
 
     // Output:
     // true
@@ -77,6 +77,6 @@ func main() {
     // true
     // true
     // limit is reached
-    // true
+    // false
 }
 ```
