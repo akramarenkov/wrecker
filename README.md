@@ -28,7 +28,7 @@ var (
 )
 
 func main() {
-data := []byte("some data")
+    data := []byte("some data")
 
     buffer := bytes.NewBuffer(nil)
 
