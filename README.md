@@ -43,46 +43,47 @@ func main() {
 
     wrecker := wrecker.New(opts)
 
-    if _, err := wrecker.Write(data); err != nil {
-        fmt.Println(err)
-    }
-
+    _, err := wrecker.Write(data)
+    fmt.Println(err)
     fmt.Println(buffer.String() == string(data))
+    fmt.Println()
 
-    if _, err := wrecker.Write(data); err != nil {
-        fmt.Println(err)
-    }
-
+    _, err = wrecker.Write(data)
+    fmt.Println(err)
     fmt.Println(buffer.String() == string(data)+string(data))
+    fmt.Println()
 
-    if _, err := wrecker.Write(data); err != nil {
-        fmt.Println(err)
-    }
-
+    _, err = wrecker.Write(data)
+    fmt.Println(err)
     fmt.Println(buffer.String() == string(data)+string(data))
+    fmt.Println()
 
     payload := make([]byte, len(data))
 
-    if _, err := wrecker.Read(payload); err != nil {
-        fmt.Println(err)
-    }
-
+    _, err = wrecker.Read(payload)
+    fmt.Println(err)
     fmt.Println(string(payload) == string(data))
+    fmt.Println()
 
     payload = make([]byte, len(data))
 
-    if _, err := wrecker.Read(payload); err != nil {
-        fmt.Println(err)
-    }
-
+    _, err = wrecker.Read(payload)
+    fmt.Println(err)
     fmt.Println(string(payload) == string(data))
 
     // Output:
+    // <nil>
     // true
+    //
+    // <nil>
     // true
+    //
     // limit is reached
     // true
+    //
+    // <nil>
     // true
+    //
     // limit is reached
     // false
 }
