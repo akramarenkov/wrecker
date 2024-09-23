@@ -2,12 +2,12 @@ linters:
   enable:
     - bidichk
     - bodyclose
+    - copyloopvar
     - decorder
     - err113
     - errcheck
     - errname
     - errorlint
-    - exportloopref
     - fatcontext
     - forbidigo
     - forcetypeassert
