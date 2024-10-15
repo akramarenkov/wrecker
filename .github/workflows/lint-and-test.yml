@@ -17,17 +17,13 @@ jobs:
           go-version: '1.23'
       - uses: actions/checkout@v4
       - run: |
-          go test -v -race -bench=^BenchmarkRace ./...
-
-          for dir in v[0-9]*;
+          for dir in . v[0-9]*;
           do
-            test -d "${dir}" || continue
-
             cd "${dir}" || continue
 
             go test -v -race -bench=^BenchmarkRace ./...
 
-            cd ..
+            test "${dir}" != "." && cd ..
           done
   lint:
     runs-on: ubuntu-latest

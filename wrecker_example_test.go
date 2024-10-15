@@ -55,7 +55,6 @@ func ExampleWrecker() {
 	_, err = wrecker.Read(payload)
 	fmt.Println(err)
 	fmt.Println(string(payload) == string(data))
-
 	// Output:
 	// <nil>
 	// true
