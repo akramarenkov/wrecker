@@ -1,16 +1,22 @@
 linters:
   enable:
+    - asasalint
+    - asciicheck
     - bidichk
     - bodyclose
+    - containedctx
     - copyloopvar
     - decorder
+    - dupword
     - err113
     - errcheck
     - errname
     - errorlint
+    - exptostd
     - fatcontext
     - forbidigo
     - forcetypeassert
+    - gci
     - gocheckcompilerdirectives
     - gochecknoglobals
     - gochecknoinits
@@ -23,30 +29,44 @@ linters:
     - godox
     - gofmt
     - goheader
+    - goimports
     - gosec
     - gosimple
     - gosmopolitan
     - govet
+    - grouper
+    - iface
+    - inamedparam
     - ineffassign
+    - interfacebloat
     - intrange
     - lll
     - maintidx
     - makezero
+    - mirror
     - misspell
     - mnd
+    - musttag
     - nakedret
     - nestif
     - nilerr
+    - nilnesserr
     - nilnil
     - nolintlint
+    - nonamedreturns
+    - nosprintfhostport
     - perfsprint
     - prealloc
     - predeclared
+    - protogetter
     - reassign
+    - recvcheck
     - revive
+    - rowserrcheck
     - sqlclosecheck
     - staticcheck
     - stylecheck
+    - tagalign
     - tagliatelle
     - tenv
     - testableexamples
@@ -55,7 +75,32 @@ linters:
     - unconvert
     - unused
     - usestdlibvars
+    - usetesting
     - wastedassign
     - whitespace
     - wsl
     - zerologlint
+
+linters-settings:
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment
+      - shadow
+  gci:
+    sections:
+      - standard
+      - localmodule
+      - default
+    custom-order: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+output:
+  sort-results: true
+  show-stats: true
+
+run:
+  timeout: 10m
