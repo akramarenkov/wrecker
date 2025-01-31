@@ -62,7 +62,7 @@ func testWreckerCalls(t *testing.T, callsLimit int) {
 	}
 }
 
-func testWreckerSize(t *testing.T, blockSize int, readSizeLimit int) {
+func testWreckerSize(t *testing.T, blockSize, readSizeLimit int) {
 	readUnerringIterations := readSizeLimit / blockSize
 	require.GreaterOrEqual(
 		t,

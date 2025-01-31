@@ -93,6 +93,14 @@ linters-settings:
       - localmodule
       - default
     custom-order: true
+  gocritic:
+    enable-all: true
+    disabled-checks:
+      - unnamedResult
+      - emptyStringTest
+    settings:
+      TooManyResultsChecker:
+        maxResults: 6
 
 issues:
   max-issues-per-linter: 0

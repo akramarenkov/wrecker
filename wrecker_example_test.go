@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/akramarenkov/wrecker"
 )
@@ -30,31 +31,31 @@ func ExampleWrecker() {
 
 	_, err := wrecker.Write(data)
 	fmt.Println(err)
-	fmt.Println(buffer.String() == string(data))
+	fmt.Println(slices.Equal(buffer.Bytes(), data))
 	fmt.Println()
 
 	_, err = wrecker.Write(data)
 	fmt.Println(err)
-	fmt.Println(buffer.String() == string(data)+string(data))
+	fmt.Println(slices.Equal(buffer.Bytes(), slices.Concat(data, data)))
 	fmt.Println()
 
 	_, err = wrecker.Write(data)
 	fmt.Println(err)
-	fmt.Println(buffer.String() == string(data)+string(data))
+	fmt.Println(slices.Equal(buffer.Bytes(), slices.Concat(data, data)))
 	fmt.Println()
 
-	payload := make([]byte, len(data))
+	received := make([]byte, len(data))
 
-	_, err = wrecker.Read(payload)
+	_, err = wrecker.Read(received)
 	fmt.Println(err)
-	fmt.Println(string(payload) == string(data))
+	fmt.Println(slices.Equal(received, data))
 	fmt.Println()
 
-	payload = make([]byte, len(data))
+	received2 := make([]byte, len(data))
 
-	_, err = wrecker.Read(payload)
+	_, err = wrecker.Read(received2)
 	fmt.Println(err)
-	fmt.Println(string(payload) == string(data))
+	fmt.Println(slices.Equal(received2, data))
 	// Output:
 	// <nil>
 	// true
