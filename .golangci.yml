@@ -1,3 +1,4 @@
+---
 linters:
   enable:
     - asasalint
@@ -85,8 +86,8 @@ linters-settings:
   govet:
     enable-all: true
     disable:
-      - fieldalignment
-      - shadow
+      - shadow # causes too many false positives
+      - fieldalignment # needs to be enabled in the future
   gci:
     sections:
       - standard
@@ -96,11 +97,45 @@ linters-settings:
   gocritic:
     enable-all: true
     disabled-checks:
-      - unnamedResult
-      - emptyStringTest
+      - unnamedResult # conflicts with nonamedreturns, named returns are more confusing
+      - emptyStringTest # not more idiomatically
     settings:
-      TooManyResultsChecker:
-        maxResults: 6
+      tooManyResultsChecker:
+        maxResults: 6 # try to decrease in the future
+  revive:
+    enable-all-rules: true
+    rules:
+      - name: add-constant
+        disabled: true # mnd is used instead
+      - name: line-length-limit
+        disabled: true # lll is used instead
+      - name: cognitive-complexity
+        disabled: true # gocognit, gocyclo, maintidx, nestif is used instead
+      - name: function-result-limit
+        disabled: true # gocritic is used instead
+      - name: cyclomatic
+        disabled: true # gocognit, gocyclo, maintidx, nestif is used instead
+      - name: confusing-results
+        disabled: true # conflicts with nonamedreturns, named returns are more confusing
+      - name: unhandled-error
+        arguments:
+          - 'fmt\.Print.*' # error writing to stdout can only be reliably handled by panic
+          - 'bytes\.Buffer\.Write.*' # always returns nil
+      - name: flag-parameter
+        disabled: true # causes too many false positives
+      - name: confusing-naming
+        disabled: true # needs to be enabled in the future
+      - name: function-length
+        disabled: true # needs to be enabled in the future
+      - name: max-control-nesting
+        arguments:
+          - 6 # try to decrease in the future
+      - name: max-public-structs
+        arguments:
+          - 8 # try to decrease in the future
+      - name: argument-limit
+        arguments:
+          - 10 # try to decrease in the future
 
 issues:
   max-issues-per-linter: 0
