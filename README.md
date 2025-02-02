@@ -24,9 +24,7 @@ import (
     "github.com/akramarenkov/wrecker"
 )
 
-var (
-    ErrLimitReached = errors.New("limit is reached")
-)
+var ErrLimitReached = errors.New("limit is reached")
 
 func main() {
     data := []byte("some data")
@@ -42,33 +40,33 @@ func main() {
         WriteSizeLimit:  2 * len(data),
     }
 
-    wrecker := wrecker.New(opts)
+    wrkr := wrecker.New(opts)
 
-    _, err := wrecker.Write(data)
+    _, err := wrkr.Write(data)
     fmt.Println(err)
     fmt.Println(slices.Equal(buffer.Bytes(), data))
     fmt.Println()
 
-    _, err = wrecker.Write(data)
+    _, err = wrkr.Write(data)
     fmt.Println(err)
     fmt.Println(slices.Equal(buffer.Bytes(), slices.Concat(data, data)))
     fmt.Println()
 
-    _, err = wrecker.Write(data)
+    _, err = wrkr.Write(data)
     fmt.Println(err)
     fmt.Println(slices.Equal(buffer.Bytes(), slices.Concat(data, data)))
     fmt.Println()
 
     received := make([]byte, len(data))
 
-    _, err = wrecker.Read(received)
+    _, err = wrkr.Read(received)
     fmt.Println(err)
     fmt.Println(slices.Equal(received, data))
     fmt.Println()
 
     received2 := make([]byte, len(data))
 
-    _, err = wrecker.Read(received2)
+    _, err = wrkr.Read(received2)
     fmt.Println(err)
     fmt.Println(slices.Equal(received2, data))
     // Output:
