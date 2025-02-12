@@ -69,13 +69,13 @@ linters:
     - stylecheck
     - tagalign
     - tagliatelle
-    - tenv
     - testableexamples
     - testifylint
     - typecheck
     - unconvert
     - unused
     - usestdlibvars
+    - usetesting
     - usetesting
     - wastedassign
     - whitespace
