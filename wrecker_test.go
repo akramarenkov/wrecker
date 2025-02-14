@@ -82,7 +82,7 @@ func testWreckerSize(t *testing.T, blockSize, readSizeLimit int) {
 		readSizeLimit,
 	)
 
-	// to make sure that read errors and inequality of the read data block to the
+	// To make sure that read errors and inequality of the read data block to the
 	// written data block are caused by Wrecker
 	writeSizeLimit := readErroneousIterations * blockSize
 	writeUnerringIterations := readErroneousIterations

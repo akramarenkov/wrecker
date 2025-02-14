@@ -12,23 +12,28 @@ type Opts struct {
 	// Error value that will be returned when reaching the limits. If not specified,
 	// io.ErrUnexpectedEOF will be used
 	Error error
+
 	// Limit on the number of completed Read calls. An error will be returned when
 	// attempting to make a ReadCallsLimit+1 call and on subsequent attempts. A
 	// negative value indicates that there are no limit
 	ReadCallsLimit int
+
 	// Limit on the size of read data. An error will be returned when attempting to
 	// read in total more than ReadSizeLimit data and on subsequent attempts. A
 	// negative value indicates that there are no limit
 	ReadSizeLimit int
+
 	// Underlying io.ReadWriter whose corresponding methods will be called until the
 	// limits are reached. May not be specified, in which case the Read/Write methods
 	// will return a zero error and the amount of processed data equal to the amount
 	// of input data
 	ReadWriter io.ReadWriter
+
 	// Limit on the number of completed Write calls. An error will be returned when
 	// attempting to make a WriteCallsLimit+1 call and on subsequent attempts. A
 	// negative value indicates that there are no limit
 	WriteCallsLimit int
+
 	// Limit on the size of write data. An error will be returned when attempting to
 	// write in total more than WriteSizeLimit data and on subsequent attempts. A
 	// negative value indicates that there are no limit
@@ -114,7 +119,7 @@ func (wrc *Wrecker) readSizeLimitIsReached(data []byte) bool {
 		return true
 	}
 
-	// cannot be overflowed under these conditions
+	// Cannot be overflowed under these conditions
 	wrc.read.processedSize -= len(data)
 
 	return wrc.read.processedSize < 0
@@ -159,7 +164,7 @@ func (wrc *Wrecker) writeSizeLimitIsReached(data []byte) bool {
 		return true
 	}
 
-	// cannot be overflowed under these conditions
+	// Cannot be overflowed under these conditions
 	wrc.write.processedSize -= len(data)
 
 	return wrc.write.processedSize < 0
