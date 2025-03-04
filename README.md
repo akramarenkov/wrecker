@@ -6,7 +6,9 @@
 
 ## Purpose
 
-Library with a Wrecker which corresponds to the io.ReadWriter interface and provides completes read and/or write operations with an error after reaching the limits on completed calls and/or the size of processed data
+Library with a Wrecker which corresponds to the io.ReadWriter interface and
+ provides completes read and/or write operations with an error after reaching
+ the limits on completed calls and/or the size of processed data
 
 ## Usage
 
