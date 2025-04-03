@@ -1,13 +1,13 @@
-// Library with a Wrecker which corresponds to the io.ReadWriter interface and provides
+// Input/output wrecker which corresponds to the io.ReadWriter interface and provides
 // completes read and/or write operations with an error when reaching the limits on
 // completed calls and/or the size of processed data.
-package wrecker
+package iow
 
 import (
 	"io"
 )
 
-// Options of the created Wrecker instance.
+// Options of the created instance of the input/output wrecker.
 type Opts struct {
 	// Error value that will be returned when reaching the limits. If not specified,
 	// io.ErrUnexpectedEOF will be used
@@ -27,7 +27,7 @@ type Opts struct {
 	// limits are reached. May not be specified, in which case the Read/Write methods
 	// will return a zero error and the amount of processed data equal to the amount
 	// of input data
-	ReadWriter io.ReadWriter
+	Underlying io.ReadWriter
 
 	// Limit on the number of completed Write calls. An error will be returned when
 	// attempting to make a WriteCallsLimit+1 call and on subsequent attempts. A
@@ -53,7 +53,8 @@ type counters struct {
 	processedSize  int
 }
 
-// Completes read and/or write operations with an error when reaching the limits on
+// Input/output wrecker which corresponds to the io.ReadWriter interface and provides
+// completes read and/or write operations with an error when reaching the limits on
 // completed calls and/or the size of processed data.
 type Wrecker struct {
 	opts Opts
@@ -62,7 +63,7 @@ type Wrecker struct {
 	write counters
 }
 
-// Creates Wrecker instance.
+// Creates a new input/output wrecker.
 func New(opts Opts) *Wrecker {
 	wrc := &Wrecker{
 		opts: opts.normalize(),
@@ -89,11 +90,11 @@ func (wrc *Wrecker) Read(data []byte) (int, error) {
 		return 0, wrc.opts.Error
 	}
 
-	if wrc.opts.ReadWriter == nil {
+	if wrc.opts.Underlying == nil {
 		return len(data), nil
 	}
 
-	return wrc.opts.ReadWriter.Read(data)
+	return wrc.opts.Underlying.Read(data)
 }
 
 func (wrc *Wrecker) readCallsLimitIsReached() bool {
@@ -134,11 +135,11 @@ func (wrc *Wrecker) Write(data []byte) (int, error) {
 		return 0, wrc.opts.Error
 	}
 
-	if wrc.opts.ReadWriter == nil {
+	if wrc.opts.Underlying == nil {
 		return len(data), nil
 	}
 
-	return wrc.opts.ReadWriter.Write(data)
+	return wrc.opts.Underlying.Write(data)
 }
 
 func (wrc *Wrecker) writeCallsLimitIsReached() bool {

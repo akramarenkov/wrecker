@@ -1,4 +1,4 @@
-package wrecker_test
+package iow_test
 
 import (
 	"bytes"
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/akramarenkov/wrecker"
+	"github.com/akramarenkov/wrecker/iow"
 )
 
 var ErrLimitReached = errors.New("limit is reached")
@@ -16,42 +16,42 @@ func ExampleWrecker() {
 
 	buffer := bytes.NewBuffer(nil)
 
-	opts := wrecker.Opts{
+	opts := iow.Opts{
 		Error:           ErrLimitReached,
 		ReadCallsLimit:  1,
 		ReadSizeLimit:   2 * len(data),
-		ReadWriter:      buffer,
+		Underlying:      buffer,
 		WriteCallsLimit: 3,
 		WriteSizeLimit:  2 * len(data),
 	}
 
-	wrkr := wrecker.New(opts)
+	wrecker := iow.New(opts)
 
-	_, err := wrkr.Write(data)
+	_, err := wrecker.Write(data)
 	fmt.Println(err)
 	fmt.Println(slices.Equal(buffer.Bytes(), data))
 	fmt.Println()
 
-	_, err = wrkr.Write(data)
+	_, err = wrecker.Write(data)
 	fmt.Println(err)
 	fmt.Println(slices.Equal(buffer.Bytes(), slices.Concat(data, data)))
 	fmt.Println()
 
-	_, err = wrkr.Write(data)
+	_, err = wrecker.Write(data)
 	fmt.Println(err)
 	fmt.Println(slices.Equal(buffer.Bytes(), slices.Concat(data, data)))
 	fmt.Println()
 
 	received := make([]byte, len(data))
 
-	_, err = wrkr.Read(received)
+	_, err = wrecker.Read(received)
 	fmt.Println(err)
 	fmt.Println(slices.Equal(received, data))
 	fmt.Println()
 
 	received2 := make([]byte, len(data))
 
-	_, err = wrkr.Read(received2)
+	_, err = wrecker.Read(received2)
 	fmt.Println(err)
 	fmt.Println(slices.Equal(received2, data))
 	// Output:

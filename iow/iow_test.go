@@ -1,4 +1,4 @@
-package wrecker
+package iow
 
 import (
 	"bytes"
@@ -83,7 +83,7 @@ func testWreckerSize(t *testing.T, blockSize, readSizeLimit int) {
 	)
 
 	// To make sure that read errors and inequality of the read data block to the
-	// written data block are caused by Wrecker
+	// written data block are caused by wrecker
 	writeSizeLimit := readErroneousIterations * blockSize
 	writeUnerringIterations := readErroneousIterations
 	writeErroneousIterations := writeUnerringIterations + erroneousIterationsExcess
@@ -92,7 +92,7 @@ func testWreckerSize(t *testing.T, blockSize, readSizeLimit int) {
 		Error:           io.ErrClosedPipe,
 		ReadCallsLimit:  -1,
 		ReadSizeLimit:   readSizeLimit,
-		ReadWriter:      bytes.NewBuffer(nil),
+		Underlying:      bytes.NewBuffer(nil),
 		WriteCallsLimit: -1,
 		WriteSizeLimit:  writeSizeLimit,
 	}
