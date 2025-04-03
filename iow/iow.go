@@ -1,4 +1,4 @@
-// Input/output wrecker which corresponds to the io.ReadWriter interface and provides
+// Wrecker which corresponds to the io.ReadWriter interface and provides
 // completes read and/or write operations with an error when reaching the limits on
 // completed calls and/or the size of processed data.
 package iow
@@ -53,7 +53,7 @@ type counters struct {
 	processedSize  int
 }
 
-// Input/output wrecker which corresponds to the io.ReadWriter interface and provides
+// Wrecker which corresponds to the io.ReadWriter interface and provides
 // completes read and/or write operations with an error when reaching the limits on
 // completed calls and/or the size of processed data.
 type Wrecker struct {

@@ -15,4 +15,5 @@ Library that provides completes input/output operations with an error according 
  completes read and/or write operations with an error when reaching the limits on
  completed calls and/or the size of processed data. See [README](iow/README.md)
 
-* **httpw** - . See [README](httpw/README.md)
+* **httpw** - HTTP wrecker which provides an ability to interrupt execution of requests
+ to an upstream server. See [README](httpw/README.md)
