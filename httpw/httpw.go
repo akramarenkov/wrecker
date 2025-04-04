@@ -3,15 +3,12 @@
 package httpw
 
 import (
-	"errors"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 
 	"github.com/akramarenkov/utr"
 )
-
-var ErrOnlyStdTransport = errors.New("only transport from net/http package can be used with unix socket")
 
 const (
 	UnixSchemeHTTP  = "http+unix"
@@ -83,12 +80,17 @@ func prepareUnixProxy(
 	// of hostname
 	_ = keeper.AddPath(unixHostname, upstreamURL.Path)
 
-	adjusters, err := prepareUnixAdjusters(proxyTransport)
-	if err != nil {
-		return nil, err
+	if proxyTransport == nil {
+		proxyTransport = http.DefaultTransport
 	}
 
-	if err := utr.Register(&keeper, adjusters...); err != nil {
+	transport, err := utr.New(
+		&keeper,
+		proxyTransport,
+		utr.WithSchemeHTTP(UnixSchemeHTTP),
+		utr.WithSchemeHTTPS(UnixSchemeHTTPS),
+	)
+	if err != nil {
 		return nil, err
 	}
 
@@ -97,31 +99,10 @@ func prepareUnixProxy(
 			req.URL.Scheme = upstreamURL.Scheme
 			req.URL.Host = unixHostname
 		},
-		Transport: proxyTransport,
+		Transport: transport,
 	}
 
 	return proxy, nil
-}
-
-func prepareUnixAdjusters(proxyTransport http.RoundTripper) ([]utr.Adjuster, error) {
-	adjusters := []utr.Adjuster{
-		utr.WithDefaultTransport(),
-		utr.WithSchemeHTTP(UnixSchemeHTTP),
-		utr.WithSchemeHTTPS(UnixSchemeHTTPS),
-	}
-
-	if proxyTransport == nil {
-		return adjusters, nil
-	}
-
-	httpTransport, casted := proxyTransport.(*http.Transport)
-	if !casted {
-		return nil, ErrOnlyStdTransport
-	}
-
-	adjusters[0] = utr.WithTransport(httpTransport)
-
-	return adjusters, nil
 }
 
 // Implements the [http.Handler] interface.

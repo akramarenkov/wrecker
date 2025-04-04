@@ -87,8 +87,8 @@ func main() {
         ReadTimeout: time.Second,
     }
 
-    faults := make(chan error)
-    defer close(faults)
+    serverErr := make(chan error)
+    defer close(serverErr)
 
     defer func() {
         ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -98,7 +98,7 @@ func main() {
             fmt.Println("Upstream server shutdown error:", err)
         }
 
-        if err := <-faults; !errors.Is(err, http.ErrServerClosed) {
+        if err := <-serverErr; !errors.Is(err, http.ErrServerClosed) {
             fmt.Println("Upstream server has terminated abnormally:", err)
         }
 
@@ -106,17 +106,17 @@ func main() {
             fmt.Println("Wrecker server shutdown error:", err)
         }
 
-        if err := <-faults; !errors.Is(err, http.ErrServerClosed) {
+        if err := <-serverErr; !errors.Is(err, http.ErrServerClosed) {
             fmt.Println("Wrecker server has terminated abnormally:", err)
         }
     }()
 
     go func() {
-        faults <- upstreamServer.Serve(upstreamListener)
+        serverErr <- upstreamServer.Serve(upstreamListener)
     }()
 
     go func() {
-        faults <- wreckerServer.Serve(wreckerListener)
+        serverErr <- wreckerServer.Serve(wreckerListener)
     }()
 
     apiURL := url.URL{

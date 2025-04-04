@@ -53,7 +53,7 @@ func testWreckerBase(
 
 	if useUpstreamUnix {
 		upstreamURL = url.URL{
-			Scheme: "http+unix",
+			Scheme: UnixSchemeHTTP,
 			Path:   upstreamListener.Addr().String(),
 		}
 	}
@@ -95,32 +95,26 @@ func testWreckerBase(
 		ReadTimeout: time.Second,
 	}
 
-	serverFaults := make(chan error)
-	defer close(serverFaults)
+	serverErr := make(chan error)
+	defer close(serverErr)
 
 	defer func() {
 		require.NoError(t, upstreamServer.Shutdown(t.Context()))
-		require.Equal(t, http.ErrServerClosed, <-serverFaults)
+		require.Equal(t, http.ErrServerClosed, <-serverErr)
 
 		require.NoError(t, wreckerServer.Shutdown(t.Context()))
-		require.Equal(t, http.ErrServerClosed, <-serverFaults)
+		require.Equal(t, http.ErrServerClosed, <-serverErr)
 	}()
 
 	go func() {
-		serverFaults <- upstreamServer.Serve(upstreamListener)
+		serverErr <- upstreamServer.Serve(upstreamListener)
 	}()
 
 	go func() {
-		serverFaults <- wreckerServer.Serve(wreckerListener)
+		serverErr <- wreckerServer.Serve(wreckerListener)
 	}()
 
 	client := http.DefaultClient
-
-	if proxyTransport != nil {
-		client = &http.Client{
-			Transport: proxyTransport,
-		}
-	}
 
 	requestURL := url.URL{
 		Scheme: "http",
@@ -173,18 +167,6 @@ func TestWreckerBadUpstreamURL(t *testing.T) {
 
 func TestWreckerBadUnixProxyTransport(t *testing.T) {
 	wrecker, err := New("http+unix:///tmp/upstream.sock", &utr.Transport{})
-	require.Error(t, err)
-	require.Nil(t, wrecker)
-}
-
-func TestWreckerRepeatedUnixRegistration(t *testing.T) {
-	var httpTransport http.Transport
-
-	wrecker, err := New("http+unix:///tmp/upstream.sock", &httpTransport)
-	require.NoError(t, err)
-	require.NotNil(t, wrecker)
-
-	wrecker, err = New("http+unix:///tmp/upstream.sock", &httpTransport)
 	require.Error(t, err)
 	require.Nil(t, wrecker)
 }
