@@ -3,6 +3,8 @@
 package httpw
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -21,6 +23,9 @@ const unixHostname = "unix"
 //
 // If it returns false, an error will be sent to a sender and a request will not be
 // forwarded to an upstream server.
+//
+// Each decider receives a copy of the request body, which it can read independently
+// from other deciders and from the upstream server.
 type Decider func(*http.Request) bool
 
 // HTTP wrecker which provides an ability to interrupt execution of requests to an
@@ -107,12 +112,23 @@ func prepareUnixProxy(
 
 // Implements the [http.Handler] interface.
 func (wrc *Wrecker) ServeHTTP(wrt http.ResponseWriter, req *http.Request) {
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		return
+	}
+
 	for _, decider := range wrc.deciders {
-		if pass := decider(req); !pass {
+		cloned := req.Clone(req.Context())
+		cloned.Body = io.NopCloser(bytes.NewBuffer(body))
+
+		if pass := decider(cloned); !pass {
 			wrt.WriteHeader(http.StatusForbidden)
 			return
 		}
 	}
 
-	wrc.proxy.ServeHTTP(wrt, req)
+	cloned := req.Clone(req.Context())
+	cloned.Body = io.NopCloser(bytes.NewBuffer(body))
+
+	wrc.proxy.ServeHTTP(wrt, cloned)
 }

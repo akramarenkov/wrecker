@@ -1,6 +1,8 @@
 package httpw
 
 import (
+	"bytes"
+	"context"
 	"crypto/rand"
 	"io"
 	"net"
@@ -39,7 +41,7 @@ func testWreckerBase(
 		return req.URL.Path != upstreamPathForbidden
 	}
 
-	message := prepareMessage(t)
+	message := prepareMessage(t, 1024)
 
 	upstreamListener := prepareUpstreamListener(t, useUpstreamUnix)
 
@@ -159,6 +161,98 @@ func testWreckerBase(
 	require.NoError(t, resp.Body.Close())
 }
 
+func TestWreckerRequestCancel(t *testing.T) {
+	const (
+		upstreamPath = "/api"
+		wreckerPath  = "/"
+	)
+
+	message := prepareMessage(t, 1<<27)
+
+	upstreamListener := prepareUpstreamListener(t, false)
+
+	wreckerListener, err := net.Listen("tcp", "127.0.0.1:")
+	require.NoError(t, err)
+
+	upstreamURL := url.URL{
+		Scheme: "http",
+		Host:   upstreamListener.Addr().String(),
+	}
+
+	wrecker, err := New(upstreamURL.String(), nil)
+	require.NoError(t, err)
+
+	var (
+		upstreamRouter http.ServeMux
+		wreckerRouter  http.ServeMux
+	)
+
+	upstreamRouter.HandleFunc(
+		upstreamPath,
+		func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write(message)
+		},
+	)
+
+	wreckerRouter.Handle(
+		wreckerPath,
+		wrecker,
+	)
+
+	upstreamServer := &http.Server{
+		Handler:     &upstreamRouter,
+		ReadTimeout: time.Second,
+	}
+
+	wreckerServer := &http.Server{
+		Handler:     &wreckerRouter,
+		ReadTimeout: time.Second,
+	}
+
+	serverErr := make(chan error)
+	defer close(serverErr)
+
+	defer func() {
+		require.NoError(t, upstreamServer.Shutdown(t.Context()))
+		require.Equal(t, http.ErrServerClosed, <-serverErr)
+
+		require.NoError(t, wreckerServer.Shutdown(t.Context()))
+		require.Equal(t, http.ErrServerClosed, <-serverErr)
+	}()
+
+	go func() {
+		serverErr <- upstreamServer.Serve(upstreamListener)
+	}()
+
+	go func() {
+		serverErr <- wreckerServer.Serve(wreckerListener)
+	}()
+
+	client := http.DefaultClient
+
+	requestURL := url.URL{
+		Scheme: "http",
+		Host:   wreckerListener.Addr().String(),
+		Path:   upstreamPath,
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+	defer cancel()
+
+	request, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		requestURL.String(),
+		io.NopCloser(bytes.NewBuffer(message)),
+	)
+	require.NoError(t, err)
+
+	//nolint:bodyclose // False positive
+	resp, err := client.Do(request)
+	require.Error(t, err)
+	require.Nil(t, resp)
+}
+
 func TestWreckerBadUpstreamURL(t *testing.T) {
 	wrecker, err := New("http://host%2F/", nil)
 	require.Error(t, err)
@@ -187,14 +281,12 @@ func prepareUpstreamListener(t *testing.T, useUpstreamUnix bool) net.Listener {
 	return listener
 }
 
-func prepareMessage(t *testing.T) []byte {
-	const messageSize = 1024
-
-	message := make([]byte, messageSize)
+func prepareMessage(t *testing.T, size int) []byte {
+	message := make([]byte, size)
 
 	readded, err := rand.Read(message)
 	require.NoError(t, err)
-	require.Equal(t, messageSize, readded)
+	require.Equal(t, size, readded)
 
 	return message
 }
