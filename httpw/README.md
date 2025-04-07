@@ -34,29 +34,41 @@ func main() {
         panic(err)
     }
 
-    wreckerListener, err := net.Listen("tcp", "127.0.0.1:")
-    if err != nil {
-        panic(err)
-    }
-
     upstreamURL := url.URL{
         Scheme: "http",
         Host:   upstreamListener.Addr().String(),
     }
 
-    decider := func(req *http.Request) bool {
-        return req.URL.Path != "/forbidden"
+    opts := httpw.Opts{
+        Network:  "tcp",
+        Address:  "127.0.0.1:",
+        Upstream: upstreamURL.String(),
+        Deciders: []httpw.Decider{
+            func(req *http.Request) bool {
+                return req.URL.Path != "/forbidden"
+            },
+        },
     }
 
-    wrecker, err := httpw.New(upstreamURL.String(), nil, decider)
+    wrecker, err := httpw.Run(opts)
     if err != nil {
         panic(err)
     }
 
-    var (
-        upstreamRouter http.ServeMux
-        wreckerRouter  http.ServeMux
-    )
+    defer func() {
+        ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+        defer cancel()
+
+        if err := wrecker.Shutdown(ctx); err != nil {
+            fmt.Println("Wrecker shutdown error:", err)
+        }
+
+        if err := <-wrecker.Err(); !errors.Is(err, http.ErrServerClosed) {
+            fmt.Println("Wrecker has terminated abnormally:", err)
+        }
+    }()
+
+    var upstreamRouter http.ServeMux
 
     upstreamRouter.HandleFunc(
         "/api",
@@ -72,23 +84,13 @@ func main() {
         },
     )
 
-    wreckerRouter.Handle(
-        "/",
-        wrecker,
-    )
-
     upstreamServer := &http.Server{
         Handler:     &upstreamRouter,
         ReadTimeout: time.Second,
     }
 
-    wreckerServer := &http.Server{
-        Handler:     &wreckerRouter,
-        ReadTimeout: time.Second,
-    }
-
-    serverErr := make(chan error)
-    defer close(serverErr)
+    upstreamErr := make(chan error)
+    defer close(upstreamErr)
 
     defer func() {
         ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -98,30 +100,18 @@ func main() {
             fmt.Println("Upstream server shutdown error:", err)
         }
 
-        if err := <-serverErr; !errors.Is(err, http.ErrServerClosed) {
+        if err := <-upstreamErr; !errors.Is(err, http.ErrServerClosed) {
             fmt.Println("Upstream server has terminated abnormally:", err)
         }
-
-        if err := wreckerServer.Shutdown(ctx); err != nil {
-            fmt.Println("Wrecker server shutdown error:", err)
-        }
-
-        if err := <-serverErr; !errors.Is(err, http.ErrServerClosed) {
-            fmt.Println("Wrecker server has terminated abnormally:", err)
-        }
     }()
 
     go func() {
-        serverErr <- upstreamServer.Serve(upstreamListener)
-    }()
-
-    go func() {
-        serverErr <- wreckerServer.Serve(wreckerListener)
+        upstreamErr <- upstreamServer.Serve(upstreamListener)
     }()
 
     apiURL := url.URL{
         Scheme: "http",
-        Host:   wreckerListener.Addr().String(),
+        Host:   wrecker.Addr().String(),
         Path:   "/api",
     }
 
@@ -144,7 +134,7 @@ func main() {
 
     forbiddenURL := url.URL{
         Scheme: "http",
-        Host:   wreckerListener.Addr().String(),
+        Host:   wrecker.Addr().String(),
         Path:   "/forbidden",
     }
 
