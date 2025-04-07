@@ -1,134 +1,147 @@
-// HTTP wrecker which provides an ability to interrupt execution of requests to an
-// upstream server.
 package httpw
 
 import (
-	"bytes"
-	"io"
+	"context"
+	"crypto/tls"
+	"net"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
-
-	"github.com/akramarenkov/utr"
+	"time"
 )
 
-const (
-	UnixSchemeHTTP  = "http+unix"
-	UnixSchemeHTTPS = "https+unix"
-)
+const DefaultReadTimeout = time.Second
 
-const unixHostname = "unix"
+const defaultQuicklyErrorsTimeout = time.Second
 
-// Decides whether to return an error or redirect a request to an upstream server.
-//
-// If it returns false, an error will be sent to a sender and a request will not be
-// forwarded to an upstream server.
-//
-// Each decider receives a copy of the request body, which it can read independently
-// from other deciders and from the upstream server.
-type Decider func(*http.Request) bool
+// Options of the created instance of the HTTP wrecker with an HTTP server inside.
+type Opts struct {
+	// Network to listen, as in [net.Listen]. Required parameter
+	Network string
 
-// HTTP wrecker which provides an ability to interrupt execution of requests to an
-// upstream server.
-type Wrecker struct {
-	deciders []Decider
-	proxy    *httputil.ReverseProxy
+	// Address to listen, as in [net.Listen]. Required parameter
+	Address string
+
+	// URL of upstream server. Required parameter
+	Upstream string
+
+	// List of the deciders
+	Deciders []Decider
+
+	// Transport for proxied requests
+	ProxyTransport http.RoundTripper
+
+	// Parameters of server. Addr and Handler fields are ignored
+	Server *http.Server
 }
 
-// Creates a new HTTP wrecker in the form of [http.Handler].
-func New(upstreamURL string, proxyTransport http.RoundTripper, deciders ...Decider) (*Wrecker, error) {
-	up, err := url.Parse(upstreamURL)
+// HTTP wrecker with an HTTP server inside.
+type Wrecker struct {
+	err      chan error
+	listener net.Listener
+	server   *http.Server
+}
+
+// Creates and runs an HTTP wrecker with an HTTP server inside.
+func Run(opts Opts) (*Wrecker, error) { //nolint:gocritic // Copy frequency is low.
+	handler, err := New(opts.Upstream, opts.ProxyTransport, opts.Deciders...)
 	if err != nil {
 		return nil, err
 	}
 
-	proxy, err := prepareProxy(up, proxyTransport)
+	listener, err := prepareListener(opts.Server, opts.Network, opts.Address)
 	if err != nil {
 		return nil, err
 	}
 
 	wrc := &Wrecker{
-		deciders: deciders,
-		proxy:    proxy,
+		err:      make(chan error, 1),
+		listener: listener,
+		server:   prepareServer(opts.Server, handler),
+	}
+
+	go wrc.serve()
+
+	if err := wrc.waitQuicklyErrors(defaultQuicklyErrorsTimeout); err != nil {
+		return nil, err
 	}
 
 	return wrc, nil
 }
 
-func prepareProxy(
-	upstreamURL *url.URL,
-	proxyTransport http.RoundTripper,
-) (*httputil.ReverseProxy, error) {
-	if upstreamURL.Scheme == UnixSchemeHTTP || upstreamURL.Scheme == UnixSchemeHTTPS {
-		return prepareUnixProxy(upstreamURL, proxyTransport)
+func prepareListener(srv *http.Server, network, address string) (net.Listener, error) {
+	if srv != nil && srv.TLSConfig != nil {
+		return tls.Listen(network, address, srv.TLSConfig)
 	}
 
-	proxy := &httputil.ReverseProxy{
-		Director: func(req *http.Request) {
-			req.URL.Scheme = upstreamURL.Scheme
-			req.URL.Host = upstreamURL.Host
-		},
-		Transport: proxyTransport,
-	}
-
-	return proxy, nil
+	return net.Listen(network, address)
 }
 
-func prepareUnixProxy(
-	upstreamURL *url.URL,
-	proxyTransport http.RoundTripper,
-) (*httputil.ReverseProxy, error) {
-	var keeper utr.Keeper
-
-	// Returning of error  cannot be tested because a known correct hostname is used
-	// and each wrecker instance creates its own keeper, which eliminates duplication
-	// of hostname
-	_ = keeper.AddPath(unixHostname, upstreamURL.Path)
-
-	if proxyTransport == nil {
-		proxyTransport = http.DefaultTransport
-	}
-
-	transport, err := utr.New(
-		&keeper,
-		proxyTransport,
-		utr.WithSchemeHTTP(UnixSchemeHTTP),
-		utr.WithSchemeHTTPS(UnixSchemeHTTPS),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	proxy := &httputil.ReverseProxy{
-		Director: func(req *http.Request) {
-			req.URL.Scheme = upstreamURL.Scheme
-			req.URL.Host = unixHostname
-		},
-		Transport: transport,
-	}
-
-	return proxy, nil
-}
-
-// Implements the [http.Handler] interface.
-func (wrc *Wrecker) ServeHTTP(wrt http.ResponseWriter, req *http.Request) {
-	body, err := io.ReadAll(req.Body)
-	if err != nil {
-		return
-	}
-
-	for _, decider := range wrc.deciders {
-		cloned := req.Clone(req.Context())
-		cloned.Body = io.NopCloser(bytes.NewBuffer(body))
-
-		if pass := decider(cloned); !pass {
-			wrt.WriteHeader(http.StatusForbidden)
-			return
+func prepareServer(srv *http.Server, handler *Handler) *http.Server {
+	if srv == nil {
+		server := &http.Server{
+			Handler:     handler,
+			ReadTimeout: DefaultReadTimeout,
 		}
+
+		return server
 	}
 
-	cloned := req.Clone(req.Context())
-	cloned.Body = io.NopCloser(bytes.NewBuffer(body))
+	server := &http.Server{
+		Handler:                      handler,
+		TLSConfig:                    srv.TLSConfig,
+		DisableGeneralOptionsHandler: srv.DisableGeneralOptionsHandler,
+		ReadTimeout:                  srv.ReadTimeout,
+		ReadHeaderTimeout:            srv.ReadHeaderTimeout,
+		WriteTimeout:                 srv.WriteTimeout,
+		IdleTimeout:                  srv.IdleTimeout,
+		MaxHeaderBytes:               srv.MaxHeaderBytes,
+		TLSNextProto:                 srv.TLSNextProto,
+		ConnState:                    srv.ConnState,
+		ErrorLog:                     srv.ErrorLog,
+		BaseContext:                  srv.BaseContext,
+		ConnContext:                  srv.ConnContext,
+		HTTP2:                        srv.HTTP2,
+		Protocols:                    srv.Protocols,
+	}
 
-	wrc.proxy.ServeHTTP(wrt, cloned)
+	return server
+}
+
+func (wrc *Wrecker) serve() {
+	defer close(wrc.err)
+
+	wrc.err <- wrc.server.Serve(wrc.listener)
+}
+
+// When calling the [http.Server.Serve] method, it can very quickly return an error
+// unrelated to listening for connections.
+func (wrc *Wrecker) waitQuicklyErrors(timeout time.Duration) error {
+	select {
+	case <-time.After(timeout):
+		return nil
+	case err := <-wrc.err:
+		return err
+	}
+}
+
+func (wrc *Wrecker) Addr() net.Addr {
+	return wrc.listener.Addr()
+}
+
+// Returns a channel with errors occurring in the wrecker server.
+//
+// When the wrecker server is terminated by the [Shutdown] or [Close] methods,
+// [http.ErrServerClosed] is returned.
+func (wrc *Wrecker) Err() <-chan error {
+	return wrc.err
+}
+
+// Gracefully shuts down the wrecker server, simply calling [http.Server.Shutdown].
+func (wrc *Wrecker) Shutdown(ctx context.Context) error {
+	return wrc.server.Shutdown(ctx)
+}
+
+// Immediately closes all listeners and connections of the wrecker server,
+// simply calling [http.Server.Close].
+func (wrc *Wrecker) Close() error {
+	return wrc.server.Close()
 }

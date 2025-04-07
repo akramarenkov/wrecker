@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"io"
 	"net"
 	"net/http"
@@ -12,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/akramarenkov/utr"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,7 +34,6 @@ func testWreckerBase(
 	const (
 		upstreamPath          = "/api"
 		upstreamPathForbidden = "/forbidden"
-		wreckerPath           = "/"
 	)
 
 	decider := func(req *http.Request) bool {
@@ -43,10 +42,18 @@ func testWreckerBase(
 
 	message := prepareMessage(t, 1024)
 
-	upstreamListener := prepareUpstreamListener(t, useUpstreamUnix)
+	upstreamServer, upstreamListener, upstreamErr := prepareUpstreamServer(
+		t,
+		message,
+		useUpstreamUnix,
+		upstreamPath,
+		upstreamPathForbidden,
+	)
 
-	wreckerListener, err := net.Listen("tcp", "127.0.0.1:")
-	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, upstreamServer.Shutdown(t.Context()))
+		require.Equal(t, http.ErrServerClosed, <-upstreamErr)
+	}()
 
 	upstreamURL := url.URL{
 		Scheme: "http",
@@ -60,67 +67,27 @@ func testWreckerBase(
 		}
 	}
 
-	wrecker, err := New(upstreamURL.String(), proxyTransport, decider)
+	opts := Opts{
+		Network:        "tcp",
+		Address:        "127.0.0.1:",
+		Upstream:       upstreamURL.String(),
+		Deciders:       []Decider{decider},
+		ProxyTransport: proxyTransport,
+	}
+
+	wrecker, err := Run(opts)
 	require.NoError(t, err)
 
-	var (
-		upstreamRouter http.ServeMux
-		wreckerRouter  http.ServeMux
-	)
-
-	upstreamRouter.HandleFunc(
-		upstreamPath,
-		func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = w.Write(message)
-		},
-	)
-
-	upstreamRouter.HandleFunc(
-		upstreamPathForbidden,
-		func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = w.Write(message)
-		},
-	)
-
-	wreckerRouter.Handle(
-		wreckerPath,
-		wrecker,
-	)
-
-	upstreamServer := &http.Server{
-		Handler:     &upstreamRouter,
-		ReadTimeout: time.Second,
-	}
-
-	wreckerServer := &http.Server{
-		Handler:     &wreckerRouter,
-		ReadTimeout: time.Second,
-	}
-
-	serverErr := make(chan error)
-	defer close(serverErr)
-
 	defer func() {
-		require.NoError(t, upstreamServer.Shutdown(t.Context()))
-		require.Equal(t, http.ErrServerClosed, <-serverErr)
-
-		require.NoError(t, wreckerServer.Shutdown(t.Context()))
-		require.Equal(t, http.ErrServerClosed, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- upstreamServer.Serve(upstreamListener)
-	}()
-
-	go func() {
-		serverErr <- wreckerServer.Serve(wreckerListener)
+		require.NoError(t, wrecker.Shutdown(t.Context()))
+		require.Equal(t, http.ErrServerClosed, <-wrecker.Err())
 	}()
 
 	client := http.DefaultClient
 
 	requestURL := url.URL{
 		Scheme: "http",
-		Host:   wreckerListener.Addr().String(),
+		Host:   wrecker.Addr().String(),
 		Path:   upstreamPath,
 	}
 
@@ -143,7 +110,7 @@ func testWreckerBase(
 
 	requestURLForbidden := url.URL{
 		Scheme: "http",
-		Host:   wreckerListener.Addr().String(),
+		Host:   wrecker.Addr().String(),
 		Path:   upstreamPathForbidden,
 	}
 
@@ -162,6 +129,11 @@ func testWreckerBase(
 }
 
 func TestWreckerRequestCancel(t *testing.T) {
+	testWreckerRequestCancelBase(t, false)
+	testWreckerRequestCancelBase(t, true)
+}
+
+func testWreckerRequestCancelBase(t *testing.T, useServerClose bool) {
 	const (
 		upstreamPath = "/api"
 		wreckerPath  = "/"
@@ -169,70 +141,48 @@ func TestWreckerRequestCancel(t *testing.T) {
 
 	message := prepareMessage(t, 1<<27)
 
-	upstreamListener := prepareUpstreamListener(t, false)
+	upstreamServer, upstreamListener, upstreamErr := prepareUpstreamServer(
+		t,
+		message,
+		false,
+		upstreamPath,
+	)
 
-	wreckerListener, err := net.Listen("tcp", "127.0.0.1:")
-	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, upstreamServer.Shutdown(t.Context()))
+		require.Equal(t, http.ErrServerClosed, <-upstreamErr)
+	}()
 
 	upstreamURL := url.URL{
 		Scheme: "http",
 		Host:   upstreamListener.Addr().String(),
 	}
 
-	wrecker, err := New(upstreamURL.String(), nil)
+	opts := Opts{
+		Network:  "tcp",
+		Address:  "127.0.0.1:",
+		Upstream: upstreamURL.String(),
+	}
+
+	wrecker, err := Run(opts)
 	require.NoError(t, err)
 
-	var (
-		upstreamRouter http.ServeMux
-		wreckerRouter  http.ServeMux
-	)
-
-	upstreamRouter.HandleFunc(
-		upstreamPath,
-		func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = w.Write(message)
-		},
-	)
-
-	wreckerRouter.Handle(
-		wreckerPath,
-		wrecker,
-	)
-
-	upstreamServer := &http.Server{
-		Handler:     &upstreamRouter,
-		ReadTimeout: time.Second,
-	}
-
-	wreckerServer := &http.Server{
-		Handler:     &wreckerRouter,
-		ReadTimeout: time.Second,
-	}
-
-	serverErr := make(chan error)
-	defer close(serverErr)
-
 	defer func() {
-		require.NoError(t, upstreamServer.Shutdown(t.Context()))
-		require.Equal(t, http.ErrServerClosed, <-serverErr)
+		if useServerClose {
+			// Does not interrupt reading of the body with an error
+			require.NoError(t, wrecker.Close())
+		} else {
+			require.NoError(t, wrecker.Shutdown(t.Context()))
+		}
 
-		require.NoError(t, wreckerServer.Shutdown(t.Context()))
-		require.Equal(t, http.ErrServerClosed, <-serverErr)
-	}()
-
-	go func() {
-		serverErr <- upstreamServer.Serve(upstreamListener)
-	}()
-
-	go func() {
-		serverErr <- wreckerServer.Serve(wreckerListener)
+		require.Equal(t, http.ErrServerClosed, <-wrecker.Err())
 	}()
 
 	client := http.DefaultClient
 
 	requestURL := url.URL{
 		Scheme: "http",
-		Host:   wreckerListener.Addr().String(),
+		Host:   wrecker.Addr().String(),
 		Path:   upstreamPath,
 	}
 
@@ -253,16 +203,100 @@ func TestWreckerRequestCancel(t *testing.T) {
 	require.Nil(t, resp)
 }
 
-func TestWreckerBadUpstreamURL(t *testing.T) {
-	wrecker, err := New("http://host%2F/", nil)
+func TestRunBadUpstreamURL(t *testing.T) {
+	opts := Opts{
+		Upstream: "http://host%2F/",
+	}
+
+	wrecker, err := Run(opts)
 	require.Error(t, err)
 	require.Nil(t, wrecker)
 }
 
-func TestWreckerBadUnixProxyTransport(t *testing.T) {
-	wrecker, err := New("http+unix:///tmp/upstream.sock", &utr.Transport{})
+func TestRunListenFailed(t *testing.T) {
+	upstreamListener, err := net.Listen("tcp", "127.0.0.1:")
+	require.NoError(t, err)
+
+	defer upstreamListener.Close()
+
+	upstreamURL := url.URL{
+		Scheme: "http",
+		Host:   upstreamListener.Addr().String(),
+	}
+
+	opts := Opts{
+		Network:  upstreamListener.Addr().Network(),
+		Address:  upstreamListener.Addr().String(),
+		Upstream: upstreamURL.String(),
+	}
+
+	wrecker, err := Run(opts)
 	require.Error(t, err)
 	require.Nil(t, wrecker)
+}
+
+func TestRunQuicklyErrorsViaHTTP2Misconfiguration(t *testing.T) {
+	var protos http.Protocols
+
+	// Involved in HTTP2 misconfiguration
+	protos.SetUnencryptedHTTP2(true)
+
+	opts := Opts{
+		Network:  "tcp",
+		Address:  "127.0.0.1:",
+		Upstream: "http://127.0.0.1",
+		Server: &http.Server{
+			TLSConfig: &tls.Config{
+				// Doesn't cause any problems with TLS and HTTP2 misconfiguration in
+				// this case, used for simplicity to avoid generating certificates
+				GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+					return nil, nil
+				},
+				// Involved in HTTP2 misconfiguration
+				CipherSuites: []uint16{tls.TLS_RSA_WITH_RC4_128_SHA},
+			},
+			// Involved in HTTP2 misconfiguration
+			Protocols: &protos,
+		},
+	}
+
+	wrecker, err := Run(opts)
+	require.Error(t, err)
+	require.Nil(t, wrecker)
+}
+
+func prepareUpstreamServer(
+	t *testing.T,
+	message []byte,
+	useUpstreamUnix bool,
+	requestPaths ...string,
+) (*http.Server, net.Listener, chan error) {
+	listener := prepareUpstreamListener(t, useUpstreamUnix)
+
+	serverErr := make(chan error)
+
+	var router http.ServeMux
+
+	for _, path := range requestPaths {
+		router.HandleFunc(
+			path,
+			func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write(message)
+			},
+		)
+	}
+
+	server := &http.Server{
+		Handler:     &router,
+		ReadTimeout: time.Second,
+	}
+
+	go func() {
+		serverErr <- server.Serve(listener)
+		close(serverErr)
+	}()
+
+	return server, listener, serverErr
 }
 
 func prepareUpstreamListener(t *testing.T, useUpstreamUnix bool) net.Listener {

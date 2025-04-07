@@ -14,7 +14,7 @@ import (
 	"github.com/akramarenkov/wrecker/httpw"
 )
 
-func ExampleWrecker() {
+func ExampleHandler() {
 	message := []byte("example message")
 
 	upstreamListener, err := net.Listen("tcp", "127.0.0.1:")
@@ -41,10 +41,7 @@ func ExampleWrecker() {
 		panic(err)
 	}
 
-	var (
-		upstreamRouter http.ServeMux
-		wreckerRouter  http.ServeMux
-	)
+	var upstreamRouter http.ServeMux
 
 	upstreamRouter.HandleFunc(
 		"/api",
@@ -60,23 +57,18 @@ func ExampleWrecker() {
 		},
 	)
 
-	wreckerRouter.Handle(
-		"/",
-		wrecker,
-	)
-
 	upstreamServer := &http.Server{
 		Handler:     &upstreamRouter,
 		ReadTimeout: time.Second,
 	}
 
 	wreckerServer := &http.Server{
-		Handler:     &wreckerRouter,
+		Handler:     wrecker,
 		ReadTimeout: time.Second,
 	}
 
-	serverErr := make(chan error)
-	defer close(serverErr)
+	serversErrs := make(chan error)
+	defer close(serversErrs)
 
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -86,7 +78,7 @@ func ExampleWrecker() {
 			fmt.Println("Upstream server shutdown error:", err)
 		}
 
-		if err := <-serverErr; !errors.Is(err, http.ErrServerClosed) {
+		if err := <-serversErrs; !errors.Is(err, http.ErrServerClosed) {
 			fmt.Println("Upstream server has terminated abnormally:", err)
 		}
 
@@ -94,17 +86,17 @@ func ExampleWrecker() {
 			fmt.Println("Wrecker server shutdown error:", err)
 		}
 
-		if err := <-serverErr; !errors.Is(err, http.ErrServerClosed) {
+		if err := <-serversErrs; !errors.Is(err, http.ErrServerClosed) {
 			fmt.Println("Wrecker server has terminated abnormally:", err)
 		}
 	}()
 
 	go func() {
-		serverErr <- upstreamServer.Serve(upstreamListener)
+		serversErrs <- upstreamServer.Serve(upstreamListener)
 	}()
 
 	go func() {
-		serverErr <- wreckerServer.Serve(wreckerListener)
+		serversErrs <- wreckerServer.Serve(wreckerListener)
 	}()
 
 	apiURL := url.URL{
