@@ -249,12 +249,15 @@ func TestRunQuicklyErrorsViaHTTP2Misconfiguration(t *testing.T) {
 			TLSConfig: &tls.Config{
 				// Doesn't cause any problems with TLS and HTTP2 misconfiguration in
 				// this case, used for simplicity to avoid generating certificates
+				//nolint:nilnil // Special for test which require an error
 				GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 					return nil, nil
 				},
 				// Involved in HTTP2 misconfiguration
+				//nolint:gosec // Special for test which require an error
 				CipherSuites: []uint16{tls.TLS_RSA_WITH_RC4_128_SHA},
 			},
+			ReadTimeout: DefaultReadTimeout,
 			// Involved in HTTP2 misconfiguration
 			Protocols: &protos,
 		},
