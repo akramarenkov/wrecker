@@ -130,8 +130,8 @@ func (wrc *Wrecker) Addr() net.Addr {
 
 // Returns a channel with errors occurring in the wrecker server.
 //
-// When the wrecker server is terminated by the [Shutdown] or [Close] methods,
-// [http.ErrServerClosed] is returned.
+// When the wrecker server is terminated by the [Wrecker.Shutdown] or
+// [Wrecker.Close] methods, [http.ErrServerClosed] is returned.
 func (wrc *Wrecker) Err() <-chan error {
 	return wrc.err
 }
