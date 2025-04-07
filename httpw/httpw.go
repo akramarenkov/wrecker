@@ -123,6 +123,7 @@ func (wrc *Wrecker) waitQuicklyErrors(timeout time.Duration) error {
 	}
 }
 
+// Returns the address on which the wrecker is listening.
 func (wrc *Wrecker) Addr() net.Addr {
 	return wrc.listener.Addr()
 }
