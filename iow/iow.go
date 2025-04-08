@@ -81,6 +81,7 @@ func New(opts Opts) *Wrecker {
 	return wrc
 }
 
+// Implements the [io.Reader] interface.
 func (wrc *Wrecker) Read(data []byte) (int, error) {
 	if wrc.readCallsLimitIsReached() {
 		return 0, wrc.opts.Error
@@ -126,6 +127,7 @@ func (wrc *Wrecker) readSizeLimitIsReached(data []byte) bool {
 	return wrc.read.processedSize < 0
 }
 
+// Implements the [io.Writer] interface.
 func (wrc *Wrecker) Write(data []byte) (int, error) {
 	if wrc.writeCallsLimitIsReached() {
 		return 0, wrc.opts.Error
