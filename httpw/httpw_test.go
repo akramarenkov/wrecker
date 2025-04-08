@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"net/url"
@@ -46,6 +50,7 @@ func testWreckerBase(
 		t,
 		message,
 		useUpstreamUnix,
+		nil,
 		upstreamPath,
 		upstreamPathForbidden,
 	)
@@ -134,10 +139,7 @@ func TestWreckerRequestCancel(t *testing.T) {
 }
 
 func testWreckerRequestCancelBase(t *testing.T, useServerClose bool) {
-	const (
-		upstreamPath = "/api"
-		wreckerPath  = "/"
-	)
+	const upstreamPath = "/api"
 
 	message := prepareMessage(t, 1<<27)
 
@@ -145,6 +147,7 @@ func testWreckerRequestCancelBase(t *testing.T, useServerClose bool) {
 		t,
 		message,
 		false,
+		nil,
 		upstreamPath,
 	)
 
@@ -201,6 +204,104 @@ func testWreckerRequestCancelBase(t *testing.T, useServerClose bool) {
 	resp, err := client.Do(request)
 	require.Error(t, err)
 	require.Nil(t, resp)
+}
+
+func TestWreckerTLS(t *testing.T) {
+	const upstreamPath = "/api"
+
+	message := prepareMessage(t, 1024)
+
+	upstreamCaPool, upstreamServerCerts, upstreamClientCerts := genTempPKI(t, "127.0.0.1")
+
+	upstreamTLSConfig := &tls.Config{
+		Certificates: upstreamServerCerts,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    upstreamCaPool,
+		MinVersion:   tls.VersionTLS13,
+	}
+
+	upstreamServer, upstreamListener, upstreamErr := prepareUpstreamServer(
+		t,
+		message,
+		false,
+		upstreamTLSConfig,
+		upstreamPath,
+	)
+
+	defer func() {
+		require.NoError(t, upstreamServer.Shutdown(t.Context()))
+		require.Equal(t, http.ErrServerClosed, <-upstreamErr)
+	}()
+
+	upstreamURL := url.URL{
+		Scheme: "https",
+		Host:   upstreamListener.Addr().String(),
+	}
+
+	wreckerCaPool, wreckerServerCerts, wreckerClientCerts := genTempPKI(t, "127.0.0.1")
+
+	opts := Opts{
+		Network:  "tcp",
+		Address:  "127.0.0.1:",
+		Upstream: upstreamURL.String(),
+		ProxyTransport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				Certificates: upstreamClientCerts,
+				MinVersion:   tls.VersionTLS13,
+				RootCAs:      upstreamCaPool,
+			},
+		},
+		Server: &http.Server{
+			ReadTimeout: DefaultReadTimeout,
+			TLSConfig: &tls.Config{
+				Certificates: wreckerServerCerts,
+				ClientAuth:   tls.RequireAndVerifyClientCert,
+				ClientCAs:    wreckerCaPool,
+				MinVersion:   tls.VersionTLS13,
+			},
+		},
+	}
+
+	wrecker, err := Run(opts)
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, wrecker.Shutdown(t.Context()))
+		require.Equal(t, http.ErrServerClosed, <-wrecker.Err())
+	}()
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				Certificates: wreckerClientCerts,
+				MinVersion:   tls.VersionTLS13,
+				RootCAs:      wreckerCaPool,
+			},
+		},
+	}
+
+	requestURL := url.URL{
+		Scheme: "https",
+		Host:   wrecker.Addr().String(),
+		Path:   upstreamPath,
+	}
+
+	request, err := http.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		requestURL.String(),
+		http.NoBody,
+	)
+	require.NoError(t, err)
+
+	resp, err := client.Do(request)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	output, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, message, output)
+	require.NoError(t, resp.Body.Close())
 }
 
 func TestRunBadUpstreamURL(t *testing.T) {
@@ -272,9 +373,10 @@ func prepareUpstreamServer(
 	t *testing.T,
 	message []byte,
 	useUpstreamUnix bool,
+	tlsConfig *tls.Config,
 	requestPaths ...string,
 ) (*http.Server, net.Listener, chan error) {
-	listener := prepareUpstreamListener(t, useUpstreamUnix)
+	listener := prepareUpstreamListener(t, useUpstreamUnix, tlsConfig)
 
 	serverErr := make(chan error)
 
@@ -292,6 +394,7 @@ func prepareUpstreamServer(
 	server := &http.Server{
 		Handler:     &router,
 		ReadTimeout: time.Second,
+		TLSConfig:   tlsConfig,
 	}
 
 	go func() {
@@ -302,20 +405,28 @@ func prepareUpstreamServer(
 	return server, listener, serverErr
 }
 
-func prepareUpstreamListener(t *testing.T, useUpstreamUnix bool) net.Listener {
+func prepareUpstreamListener(t *testing.T, useUpstreamUnix bool, tlsConfig *tls.Config) net.Listener {
 	if useUpstreamUnix {
 		socketPath := filepath.Join(t.TempDir(), "upstream.sock")
 
-		listener, err := net.Listen("unix", socketPath)
+		listener, err := selectListener("unix", socketPath, tlsConfig)
 		require.NoError(t, err)
 
 		return listener
 	}
 
-	listener, err := net.Listen("tcp", "127.0.0.1:")
+	listener, err := selectListener("tcp", "127.0.0.1:", tlsConfig)
 	require.NoError(t, err)
 
 	return listener
+}
+
+func selectListener(network, address string, tlsConfig *tls.Config) (net.Listener, error) {
+	if tlsConfig == nil {
+		return net.Listen(network, address)
+	}
+
+	return tls.Listen(network, address, tlsConfig)
 }
 
 func prepareMessage(t *testing.T, size int) []byte {
@@ -326,4 +437,106 @@ func prepareMessage(t *testing.T, size int) []byte {
 	require.Equal(t, size, readded)
 
 	return message
+}
+
+func genTempPKI(
+	t *testing.T,
+	address string,
+) (*x509.CertPool, []tls.Certificate, []tls.Certificate) {
+	const (
+		certLifeTimeInDays = 1
+		keySize            = 1024
+
+		caSN     = 689023454
+		clientSN = 689023455
+		serverSN = 689023456
+	)
+
+	ip := net.ParseIP(address)
+	require.NotNil(t, ip)
+
+	notBefore := time.Now()
+	notAfter := notBefore.AddDate(0, 0, certLifeTimeInDays)
+
+	caTempl := &x509.Certificate{
+		SerialNumber: big.NewInt(caSN),
+		Subject: pkix.Name{
+			CommonName: "Temporary CA",
+		},
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+	}
+
+	serverTempl := &x509.Certificate{
+		SerialNumber: big.NewInt(serverSN),
+		Subject: pkix.Name{
+			CommonName: "Temporary server",
+		},
+		NotBefore:   notBefore,
+		NotAfter:    notAfter,
+		IPAddresses: []net.IP{ip},
+		KeyUsage:    x509.KeyUsageDigitalSignature,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+
+	clientTempl := &x509.Certificate{
+		SerialNumber: big.NewInt(clientSN),
+		Subject: pkix.Name{
+			CommonName: "Temporary client",
+		},
+		NotBefore:   notBefore,
+		NotAfter:    notAfter,
+		KeyUsage:    x509.KeyUsageDigitalSignature,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+
+	caPool, caKey := genCA(t, caTempl, keySize)
+	serverCert := genNodeTLSCert(t, serverTempl, keySize, caTempl, caKey)
+	clientCert := genNodeTLSCert(t, clientTempl, keySize, caTempl, caKey)
+
+	return caPool, []tls.Certificate{serverCert}, []tls.Certificate{clientCert}
+}
+
+func genCA(
+	t *testing.T,
+	templ *x509.Certificate,
+	keySize int,
+) (*x509.CertPool, *rsa.PrivateKey) {
+	key, err := rsa.GenerateKey(rand.Reader, keySize)
+	require.NoError(t, err)
+
+	cert, err := x509.CreateCertificate(rand.Reader, templ, templ, &key.PublicKey, key)
+	require.NoError(t, err)
+
+	x509Cert, err := x509.ParseCertificate(cert)
+	require.NoError(t, err)
+
+	pool := x509.NewCertPool()
+	pool.AddCert(x509Cert)
+
+	return pool, key
+}
+
+func genNodeTLSCert(
+	t *testing.T,
+	nodeTempl *x509.Certificate,
+	keySize int,
+	caTempl *x509.Certificate,
+	caKey *rsa.PrivateKey,
+) tls.Certificate {
+	key, err := rsa.GenerateKey(rand.Reader, keySize)
+	require.NoError(t, err)
+
+	cert, err := x509.CreateCertificate(rand.Reader, nodeTempl, caTempl, &key.PublicKey, caKey)
+	require.NoError(t, err)
+
+	tlsCert := tls.Certificate{
+		Certificate: [][]byte{cert},
+		PrivateKey:  key,
+	}
+
+	return tlsCert
 }
