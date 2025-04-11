@@ -21,13 +21,39 @@ import (
 )
 
 func TestWrecker(t *testing.T) {
-	testWreckerBase(t, nil, false)
-	testWreckerBase(t, &http.Transport{}, false)
+	t.Run(
+		"default_proxy_transport",
+		func(t *testing.T) {
+			t.Parallel()
+			testWreckerBase(t, nil, false)
+		},
+	)
+
+	t.Run(
+		"custom_proxy_transport",
+		func(t *testing.T) {
+			t.Parallel()
+			testWreckerBase(t, &http.Transport{}, false)
+		},
+	)
 }
 
 func TestWreckerUnix(t *testing.T) {
-	testWreckerBase(t, nil, true)
-	testWreckerBase(t, &http.Transport{}, true)
+	t.Run(
+		"default_proxy_transport",
+		func(t *testing.T) {
+			t.Parallel()
+			testWreckerBase(t, nil, true)
+		},
+	)
+
+	t.Run(
+		"custom_proxy_transport",
+		func(t *testing.T) {
+			t.Parallel()
+			testWreckerBase(t, &http.Transport{}, true)
+		},
+	)
 }
 
 func testWreckerBase(
@@ -134,14 +160,27 @@ func testWreckerBase(
 }
 
 func TestWreckerRequestCancel(t *testing.T) {
-	testWreckerRequestCancelBase(t, false)
-	testWreckerRequestCancelBase(t, true)
+	t.Run(
+		"with_server_close",
+		func(t *testing.T) {
+			t.Parallel()
+			testWreckerRequestCancelBase(t, false)
+		},
+	)
+
+	t.Run(
+		"with_server_shutdown",
+		func(t *testing.T) {
+			t.Parallel()
+			testWreckerRequestCancelBase(t, true)
+		},
+	)
 }
 
 func testWreckerRequestCancelBase(t *testing.T, useServerClose bool) {
 	const upstreamPath = "/api"
 
-	message := prepareMessage(t, 1<<27)
+	message := prepareMessage(t, 1<<28)
 
 	upstreamServer, upstreamListener, upstreamErr := prepareUpstreamServer(
 		t,
@@ -172,7 +211,6 @@ func testWreckerRequestCancelBase(t *testing.T, useServerClose bool) {
 
 	defer func() {
 		if useServerClose {
-			// Does not interrupt reading of the body with an error
 			require.NoError(t, wrecker.Close())
 		} else {
 			require.NoError(t, wrecker.Shutdown(t.Context()))
@@ -189,7 +227,7 @@ func testWreckerRequestCancelBase(t *testing.T, useServerClose bool) {
 		Path:   upstreamPath,
 	}
 
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 	defer cancel()
 
 	request, err := http.NewRequestWithContext(
