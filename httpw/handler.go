@@ -68,7 +68,7 @@ func prepareUnixProxy(
 ) (*httputil.ReverseProxy, error) {
 	var keeper utr.Keeper
 
-	// Returning of error  cannot be tested because a known correct hostname is used
+	// Returning of error cannot be tested because a known correct hostname is used
 	// and each wrecker instance creates its own keeper, which eliminates duplication
 	// of hostname
 	_ = keeper.AddPath(unixHostname, upstreamURL.Path)
