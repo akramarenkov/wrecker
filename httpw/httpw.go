@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-const DefaultReadTimeout = time.Second
+const DefaultReadTimeout = 10 * time.Second
 
 const defaultQuicklyErrorsTimeout = time.Second
 
