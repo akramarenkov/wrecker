@@ -34,40 +34,6 @@ func main() {
         panic(err)
     }
 
-    upstreamURL := url.URL{
-        Scheme: "http",
-        Host:   upstreamListener.Addr().String(),
-    }
-
-    opts := httpw.Opts{
-        Network:  "tcp",
-        Address:  "127.0.0.1:",
-        Upstream: upstreamURL.String(),
-        Deciders: []httpw.Decider{
-            func(req *http.Request) bool {
-                return req.URL.Path != "/forbidden"
-            },
-        },
-    }
-
-    wrecker, err := httpw.Run(opts)
-    if err != nil {
-        panic(err)
-    }
-
-    defer func() {
-        ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-        defer cancel()
-
-        if err := wrecker.Shutdown(ctx); err != nil {
-            fmt.Println("Wrecker shutdown error:", err)
-        }
-
-        if err := <-wrecker.Err(); !errors.Is(err, http.ErrServerClosed) {
-            fmt.Println("Wrecker has terminated abnormally:", err)
-        }
-    }()
-
     var upstreamRouter http.ServeMux
 
     upstreamRouter.HandleFunc(
@@ -107,6 +73,40 @@ func main() {
 
     go func() {
         upstreamErr <- upstreamServer.Serve(upstreamListener)
+    }()
+
+    upstreamURL := url.URL{
+        Scheme: "http",
+        Host:   upstreamListener.Addr().String(),
+    }
+
+    opts := httpw.Opts{
+        Network:  "tcp",
+        Address:  "127.0.0.1:",
+        Upstream: upstreamURL.String(),
+        Deciders: []httpw.Decider{
+            func(req *http.Request) bool {
+                return req.URL.Path != "/forbidden"
+            },
+        },
+    }
+
+    wrecker, err := httpw.Run(opts)
+    if err != nil {
+        panic(err)
+    }
+
+    defer func() {
+        ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+        defer cancel()
+
+        if err := wrecker.Shutdown(ctx); err != nil {
+            fmt.Println("Wrecker shutdown error:", err)
+        }
+
+        if err := <-wrecker.Err(); !errors.Is(err, http.ErrServerClosed) {
+            fmt.Println("Wrecker has terminated abnormally:", err)
+        }
     }()
 
     apiURL := url.URL{
