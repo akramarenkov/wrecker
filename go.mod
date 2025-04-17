@@ -3,7 +3,7 @@ module github.com/akramarenkov/wrecker
 go 1.24.1
 
 require (
-	github.com/akramarenkov/utr v0.6.2
+	github.com/akramarenkov/utr v0.6.4
 	github.com/stretchr/testify v1.10.0
 )
 
