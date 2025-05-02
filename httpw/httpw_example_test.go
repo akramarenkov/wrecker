@@ -72,9 +72,9 @@ func ExampleWrecker() {
 		Network:  "tcp",
 		Address:  "127.0.0.1:",
 		Upstream: upstreamURL.String(),
-		Deciders: []httpw.Decider{
+		Blockers: []httpw.Blocker{
 			func(req *http.Request) bool {
-				return req.URL.Path != "/forbidden"
+				return req.URL.Path == "/forbidden"
 			},
 		},
 	}

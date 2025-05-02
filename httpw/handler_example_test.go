@@ -32,11 +32,11 @@ func ExampleHandler() {
 		Host:   upstreamListener.Addr().String(),
 	}
 
-	decider := func(req *http.Request) bool {
-		return req.URL.Path != "/forbidden"
+	blocker := func(req *http.Request) bool {
+		return req.URL.Path == "/forbidden"
 	}
 
-	wrecker, err := httpw.New(upstreamURL.String(), nil, decider)
+	wrecker, err := httpw.New(upstreamURL.String(), nil, blocker)
 	if err != nil {
 		panic(err)
 	}

@@ -66,8 +66,8 @@ func testWreckerBase(
 		upstreamPathForbidden = "/forbidden"
 	)
 
-	decider := func(req *http.Request) bool {
-		return req.URL.Path != upstreamPathForbidden
+	blocker := func(req *http.Request) bool {
+		return req.URL.Path == upstreamPathForbidden
 	}
 
 	message := prepareMessage(t, 1024)
@@ -102,7 +102,7 @@ func testWreckerBase(
 		Network:        "tcp",
 		Address:        "127.0.0.1:",
 		Upstream:       upstreamURL.String(),
-		Deciders:       []Decider{decider},
+		Blockers:       []Blocker{blocker},
 		ProxyTransport: proxyTransport,
 	}
 

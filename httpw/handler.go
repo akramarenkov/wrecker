@@ -19,12 +19,12 @@ const unixHostname = "unix"
 
 // HTTP wrecker in the form of [http.Handler].
 type Handler struct {
-	deciders []Decider
+	blockers []Blocker
 	proxy    *httputil.ReverseProxy
 }
 
 // Creates a new HTTP wrecker in the form of [http.Handler].
-func New(upstreamURL string, proxyTransport http.RoundTripper, deciders ...Decider) (*Handler, error) {
+func New(upstreamURL string, proxyTransport http.RoundTripper, blockers ...Blocker) (*Handler, error) {
 	up, err := url.Parse(upstreamURL)
 	if err != nil {
 		return nil, err
@@ -36,7 +36,7 @@ func New(upstreamURL string, proxyTransport http.RoundTripper, deciders ...Decid
 	}
 
 	hdl := &Handler{
-		deciders: deciders,
+		blockers: blockers,
 		proxy:    proxy,
 	}
 
@@ -105,11 +105,11 @@ func (hdl *Handler) ServeHTTP(wrt http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	for _, decider := range hdl.deciders {
+	for _, blocker := range hdl.blockers {
 		cloned := req.Clone(req.Context())
 		cloned.Body = io.NopCloser(bytes.NewBuffer(body))
 
-		if pass := decider(cloned); !pass {
+		if block := blocker(cloned); block {
 			wrt.WriteHeader(http.StatusForbidden)
 			return
 		}

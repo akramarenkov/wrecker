@@ -23,8 +23,8 @@ type Opts struct {
 	// URL of upstream server. Required parameter
 	Upstream string
 
-	// List of the deciders
-	Deciders []Decider
+	// List of the blockers
+	Blockers []Blocker
 
 	// Transport for proxied requests
 	ProxyTransport http.RoundTripper
@@ -42,7 +42,7 @@ type Wrecker struct {
 
 // Creates and runs an HTTP wrecker with an HTTP server inside.
 func Run(opts Opts) (*Wrecker, error) { //nolint:gocritic // Copy frequency is low.
-	handler, err := New(opts.Upstream, opts.ProxyTransport, opts.Deciders...)
+	handler, err := New(opts.Upstream, opts.ProxyTransport, opts.Blockers...)
 	if err != nil {
 		return nil, err
 	}
