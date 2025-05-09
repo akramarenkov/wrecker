@@ -74,11 +74,10 @@ func testWreckerBase(
 
 	upstreamServer, upstreamListener, upstreamErr := prepareUpstreamServer(
 		t,
-		message,
 		useUpstreamUnix,
 		nil,
-		upstreamPath,
-		upstreamPathForbidden,
+		requestPath{message, upstreamPath},
+		requestPath{message, upstreamPathForbidden},
 	)
 
 	defer func() {
@@ -106,7 +105,7 @@ func testWreckerBase(
 		ProxyTransport: proxyTransport,
 	}
 
-	wrecker, err := Run(opts)
+	wrecker, err := New(opts)
 	require.NoError(t, err)
 
 	defer func() {
@@ -159,6 +158,98 @@ func testWreckerBase(
 	require.NoError(t, resp.Body.Close())
 }
 
+func TestWreckerSpolier(t *testing.T) {
+	const (
+		upstreamPath        = "/api"
+		upstreamPathBadData = "/bad/data"
+
+		badData = "spolier"
+	)
+
+	spolier := func(_ http.Header, _ int, body []byte) bool {
+		return string(body) == badData
+	}
+
+	message := prepareMessage(t, 1<<10)
+
+	upstreamServer, upstreamListener, upstreamErr := prepareUpstreamServer(
+		t,
+		false,
+		nil,
+		requestPath{message, upstreamPath},
+		requestPath{[]byte(badData), upstreamPathBadData},
+	)
+
+	defer func() {
+		require.NoError(t, upstreamServer.Shutdown(t.Context()))
+		require.Equal(t, http.ErrServerClosed, <-upstreamErr)
+	}()
+
+	upstreamURL := url.URL{
+		Scheme: "http",
+		Host:   upstreamListener.Addr().String(),
+	}
+
+	opts := Opts{
+		Network:  "tcp",
+		Address:  "127.0.0.1:",
+		Upstream: upstreamURL.String(),
+		Spoilers: []Spoiler{spolier},
+	}
+
+	wrecker, err := New(opts)
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, wrecker.Shutdown(t.Context()))
+		require.Equal(t, http.ErrServerClosed, <-wrecker.Err())
+	}()
+
+	client := http.DefaultClient
+
+	requestURL := url.URL{
+		Scheme: "http",
+		Host:   wrecker.Addr().String(),
+		Path:   upstreamPath,
+	}
+
+	request, err := http.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		requestURL.String(),
+		http.NoBody,
+	)
+	require.NoError(t, err)
+
+	resp, err := client.Do(request)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	output, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, message, output)
+	require.NoError(t, resp.Body.Close())
+
+	requestURLBadData := url.URL{
+		Scheme: "http",
+		Host:   wrecker.Addr().String(),
+		Path:   upstreamPathBadData,
+	}
+
+	request, err = http.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		requestURLBadData.String(),
+		http.NoBody,
+	)
+	require.NoError(t, err)
+
+	resp, err = client.Do(request)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
 func TestWreckerRequestCancel(t *testing.T) {
 	t.Run(
 		"with_server_close",
@@ -184,10 +275,9 @@ func testWreckerRequestCancelBase(t *testing.T, useServerClose bool) {
 
 	upstreamServer, upstreamListener, upstreamErr := prepareUpstreamServer(
 		t,
-		message,
 		false,
 		nil,
-		upstreamPath,
+		requestPath{message, upstreamPath},
 	)
 
 	defer func() {
@@ -206,7 +296,7 @@ func testWreckerRequestCancelBase(t *testing.T, useServerClose bool) {
 		Upstream: upstreamURL.String(),
 	}
 
-	wrecker, err := Run(opts)
+	wrecker, err := New(opts)
 	require.NoError(t, err)
 
 	defer func() {
@@ -260,10 +350,9 @@ func TestWreckerTLS(t *testing.T) {
 
 	upstreamServer, upstreamListener, upstreamErr := prepareUpstreamServer(
 		t,
-		message,
 		false,
 		upstreamTLSConfig,
-		upstreamPath,
+		requestPath{message, upstreamPath},
 	)
 
 	defer func() {
@@ -300,7 +389,7 @@ func TestWreckerTLS(t *testing.T) {
 		},
 	}
 
-	wrecker, err := Run(opts)
+	wrecker, err := New(opts)
 	require.NoError(t, err)
 
 	defer func() {
@@ -347,7 +436,7 @@ func TestRunBadUpstreamURL(t *testing.T) {
 		Upstream: "http://host%2F/",
 	}
 
-	wrecker, err := Run(opts)
+	wrecker, err := New(opts)
 	require.Error(t, err)
 	require.Nil(t, wrecker)
 }
@@ -369,7 +458,7 @@ func TestRunListenFailed(t *testing.T) {
 		Upstream: upstreamURL.String(),
 	}
 
-	wrecker, err := Run(opts)
+	wrecker, err := New(opts)
 	require.Error(t, err)
 	require.Nil(t, wrecker)
 }
@@ -402,17 +491,21 @@ func TestRunQuicklyErrorsViaHTTP2Misconfiguration(t *testing.T) {
 		},
 	}
 
-	wrecker, err := Run(opts)
+	wrecker, err := New(opts)
 	require.Error(t, err)
 	require.Nil(t, wrecker)
 }
 
+type requestPath struct {
+	Message []byte
+	Pattern string
+}
+
 func prepareUpstreamServer(
 	t *testing.T,
-	message []byte,
 	useUpstreamUnix bool,
 	tlsConfig *tls.Config,
-	requestPaths ...string,
+	requestPaths ...requestPath,
 ) (*http.Server, net.Listener, chan error) {
 	listener := prepareUpstreamListener(t, useUpstreamUnix, tlsConfig)
 
@@ -422,16 +515,16 @@ func prepareUpstreamServer(
 
 	for _, path := range requestPaths {
 		router.HandleFunc(
-			path,
+			path.Pattern,
 			func(w http.ResponseWriter, _ *http.Request) {
-				_, _ = w.Write(message)
+				_, _ = w.Write(path.Message)
 			},
 		)
 	}
 
 	server := &http.Server{
 		Handler:     &router,
-		ReadTimeout: time.Second,
+		ReadTimeout: 5 * time.Second,
 		TLSConfig:   tlsConfig,
 	}
 

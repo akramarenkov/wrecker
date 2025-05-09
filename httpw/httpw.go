@@ -26,6 +26,9 @@ type Opts struct {
 	// List of the blockers
 	Blockers []Blocker
 
+	// List of the spoilers
+	Spoilers []Spoiler
+
 	// Transport for proxied requests
 	ProxyTransport http.RoundTripper
 
@@ -41,8 +44,15 @@ type Wrecker struct {
 }
 
 // Creates and runs an HTTP wrecker with an HTTP server inside.
-func Run(opts Opts) (*Wrecker, error) { //nolint:gocritic // Copy frequency is low.
-	handler, err := New(opts.Upstream, opts.ProxyTransport, opts.Blockers...)
+func New(opts Opts) (*Wrecker, error) { //nolint:gocritic // Copy frequency is low.
+	handlerOpts := HandlerOpts{
+		Upstream:       opts.Upstream,
+		Blockers:       opts.Blockers,
+		Spoilers:       opts.Spoilers,
+		ProxyTransport: opts.ProxyTransport,
+	}
+
+	handler, err := NewHandler(handlerOpts)
 	if err != nil {
 		return nil, err
 	}

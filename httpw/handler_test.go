@@ -8,13 +8,22 @@ import (
 )
 
 func TestNewBadUpstreamURL(t *testing.T) {
-	wrecker, err := New("http://host%2F/", nil)
+	opts := HandlerOpts{
+		Upstream: "http://host%2F/",
+	}
+
+	handler, err := NewHandler(opts)
 	require.Error(t, err)
-	require.Nil(t, wrecker)
+	require.Nil(t, handler)
 }
 
 func TestNewBadUnixProxyTransport(t *testing.T) {
-	wrecker, err := New("http+unix:///tmp/upstream.sock", &utr.Transport{})
+	opts := HandlerOpts{
+		Upstream:       "http+unix:///tmp/upstream.sock",
+		ProxyTransport: &utr.Transport{},
+	}
+
+	handler, err := NewHandler(opts)
 	require.Error(t, err)
-	require.Nil(t, wrecker)
+	require.Nil(t, handler)
 }

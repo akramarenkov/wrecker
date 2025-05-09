@@ -3,9 +3,13 @@ package httpw
 import (
 	"bytes"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"slices"
+
+	"github.com/akramarenkov/wrecker/httpw/internal/gatherer"
 
 	"github.com/akramarenkov/utr"
 )
@@ -17,27 +21,43 @@ const (
 
 const unixHostname = "unix"
 
+type HandlerOpts struct {
+	// URL of upstream server. Required parameter
+	Upstream string
+
+	// List of the blockers
+	Blockers []Blocker
+
+	// List of the spoilers
+	Spoilers []Spoiler
+
+	// Transport for proxied requests
+	ProxyTransport http.RoundTripper
+}
+
 // HTTP wrecker in the form of [http.Handler].
 type Handler struct {
-	blockers []Blocker
-	proxy    *httputil.ReverseProxy
+	opts HandlerOpts
+
+	proxy *httputil.ReverseProxy
 }
 
 // Creates a new HTTP wrecker in the form of [http.Handler].
-func New(upstreamURL string, proxyTransport http.RoundTripper, blockers ...Blocker) (*Handler, error) {
-	up, err := url.Parse(upstreamURL)
+func NewHandler(opts HandlerOpts) (*Handler, error) { //nolint:gocritic // Copy frequency is low.
+	upstream, err := url.Parse(opts.Upstream)
 	if err != nil {
 		return nil, err
 	}
 
-	proxy, err := prepareProxy(up, proxyTransport)
+	proxy, err := prepareProxy(upstream, opts.ProxyTransport)
 	if err != nil {
 		return nil, err
 	}
 
 	hdl := &Handler{
-		blockers: blockers,
-		proxy:    proxy,
+		opts: opts,
+
+		proxy: proxy,
 	}
 
 	return hdl, nil
@@ -105,7 +125,7 @@ func (hdl *Handler) ServeHTTP(wrt http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	for _, blocker := range hdl.blockers {
+	for _, blocker := range hdl.opts.Blockers {
 		cloned := req.Clone(req.Context())
 		cloned.Body = io.NopCloser(bytes.NewBuffer(body))
 
@@ -115,8 +135,22 @@ func (hdl *Handler) ServeHTTP(wrt http.ResponseWriter, req *http.Request) {
 		}
 	}
 
+	ghr := gatherer.New()
+
 	cloned := req.Clone(req.Context())
 	cloned.Body = io.NopCloser(bytes.NewBuffer(body))
 
-	hdl.proxy.ServeHTTP(wrt, cloned)
+	hdl.proxy.ServeHTTP(ghr, cloned)
+
+	for _, spoiler := range hdl.opts.Spoilers {
+		headers := maps.Clone(ghr.Header())
+		body := slices.Clone(ghr.Body())
+
+		if spoil := spoiler(headers, ghr.StatusCode(), body); spoil {
+			wrt.WriteHeader(http.StatusForbidden)
+			return
+		}
+	}
+
+	_, _ = ghr.Pass(wrt)
 }

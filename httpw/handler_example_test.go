@@ -36,7 +36,12 @@ func ExampleHandler() {
 		return req.URL.Path == "/forbidden"
 	}
 
-	wrecker, err := httpw.New(upstreamURL.String(), nil, blocker)
+	opts := httpw.HandlerOpts{
+		Upstream: upstreamURL.String(),
+		Blockers: []httpw.Blocker{blocker},
+	}
+
+	wrecker, err := httpw.NewHandler(opts)
 	if err != nil {
 		panic(err)
 	}
@@ -59,12 +64,12 @@ func ExampleHandler() {
 
 	upstreamServer := &http.Server{
 		Handler:     &upstreamRouter,
-		ReadTimeout: time.Second,
+		ReadTimeout: 5 * time.Second,
 	}
 
 	wreckerServer := &http.Server{
 		Handler:     wrecker,
-		ReadTimeout: time.Second,
+		ReadTimeout: 5 * time.Second,
 	}
 
 	serversErrs := make(chan error)

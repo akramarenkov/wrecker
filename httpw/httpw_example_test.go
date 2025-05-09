@@ -40,7 +40,7 @@ func ExampleWrecker() {
 
 	upstreamServer := &http.Server{
 		Handler:     &upstreamRouter,
-		ReadTimeout: time.Second,
+		ReadTimeout: 5 * time.Second,
 	}
 
 	upstreamErr := make(chan error)
@@ -79,7 +79,7 @@ func ExampleWrecker() {
 		},
 	}
 
-	wrecker, err := httpw.Run(opts)
+	wrecker, err := httpw.New(opts)
 	if err != nil {
 		panic(err)
 	}
