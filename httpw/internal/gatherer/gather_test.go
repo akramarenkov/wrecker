@@ -10,6 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/akramarenkov/wrecker/httpw/internal/unhijacked"
+
+	"github.com/gorilla/websocket"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,7 +28,9 @@ func TestGatherer(t *testing.T) {
 		w.Header().Add("Key-Multi", "ValueMulti2")
 
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write(message)
+
+		_, err := w.Write(message)
+		assert.NoError(t, err)
 	}
 
 	expecter := func(t *testing.T, resp *http.Response) {
@@ -59,7 +65,9 @@ func TestGathererLargeBody(t *testing.T) {
 		w.Header().Add("Key-Multi", "ValueMulti2")
 
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write(message)
+
+		_, err := w.Write(message)
+		assert.NoError(t, err)
 	}
 
 	expecter := func(t *testing.T, resp *http.Response) {
@@ -99,7 +107,9 @@ func TestGathererLargeBodyManuallyContentLength(t *testing.T) {
 		w.Header().Set("Content-Length", strconv.FormatInt(messageSize, 10))
 
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write(message)
+
+		_, err := w.Write(message)
+		assert.NoError(t, err)
 	}
 
 	expecter := func(t *testing.T, resp *http.Response) {
@@ -134,7 +144,8 @@ func TestGathererAutomaticStatusCode(t *testing.T) {
 		w.Header().Add("Key-Multi", "ValueMulti2")
 		w.Header().Set("Content-Length", strconv.FormatInt(messageSize, 10))
 
-		_, _ = w.Write(message)
+		_, err := w.Write(message)
+		assert.NoError(t, err)
 	}
 
 	expecter := func(t *testing.T, resp *http.Response) {
@@ -164,23 +175,24 @@ func testGathererBase(
 	handler func(w http.ResponseWriter, r *http.Request),
 	expecter func(t *testing.T, resp *http.Response),
 ) {
-	listener, err := net.Listen("tcp", "127.0.0.1:")
-	require.NoError(t, err)
-
-	defer listener.Close()
-
 	var router http.ServeMux
 
 	router.HandleFunc(
 		"/",
 		func(w http.ResponseWriter, r *http.Request) {
-			ghr := New()
+			ghr := New(w)
 
 			handler(ghr, r)
 
-			_, _ = ghr.Pass(w)
+			_, err := ghr.Pass()
+			assert.NoError(t, err)
 		},
 	)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:")
+	require.NoError(t, err)
+
+	defer listener.Close()
 
 	server := &http.Server{
 		Handler:     &router,
@@ -222,6 +234,126 @@ func testGathererBase(
 	require.NoError(t, err)
 	require.Equal(t, message, output)
 	require.NoError(t, resp.Body.Close())
+}
+
+func TestGathererWebSocket(t *testing.T) {
+	testGathererWebSocketBase(t, false)
+}
+
+func TestGathererWebSocketUnhijackedUnderlying(t *testing.T) {
+	testGathererWebSocketBase(t, true)
+}
+
+func testGathererWebSocketBase(t *testing.T, useUnhijacked bool) {
+	const messageSize = 1 << 20
+
+	message := prepareMessage(t, messageSize)
+
+	headers := http.Header{"Key": []string{"Value"}}
+	expectedHeaders := http.Header{"Key": []string{"Value"}}
+
+	var upgrader websocket.Upgrader
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		if !assert.Subset(t, r.Header, expectedHeaders) {
+			return
+		}
+
+		conn, err := upgrader.Upgrade(w, r, headers)
+
+		if useUnhijacked {
+			assert.Error(t, err)
+			return
+		}
+
+		if !assert.NoError(t, err) {
+			return
+		}
+
+		kind, msg, err := conn.ReadMessage()
+		if !assert.NoError(t, err) {
+			return
+		}
+
+		assert.NoError(t, conn.WriteMessage(kind, msg))
+	}
+
+	pickResponseWriter := func(w http.ResponseWriter) http.ResponseWriter {
+		if useUnhijacked {
+			return unhijacked.New(w)
+		}
+
+		return w
+	}
+
+	var router http.ServeMux
+
+	router.HandleFunc(
+		"/",
+		func(w http.ResponseWriter, r *http.Request) {
+			ghr := New(pickResponseWriter(w))
+
+			handler(ghr, r)
+
+			_, err := ghr.Pass()
+			assert.NoError(t, err)
+		},
+	)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:")
+	require.NoError(t, err)
+
+	defer listener.Close()
+
+	server := &http.Server{
+		Handler:     &router,
+		ReadTimeout: 5 * time.Second,
+	}
+
+	serverErr := make(chan error)
+
+	go func() {
+		serverErr <- server.Serve(listener)
+		close(serverErr)
+	}()
+
+	defer func() {
+		require.NoError(t, server.Shutdown(t.Context()))
+		require.Equal(t, http.ErrServerClosed, <-serverErr)
+	}()
+
+	requestURL := url.URL{
+		Scheme: "ws",
+		Host:   listener.Addr().String(),
+		Path:   "/",
+	}
+
+	conn, resp, err := websocket.DefaultDialer.DialContext(
+		t.Context(),
+		requestURL.String(),
+		headers,
+	)
+
+	if useUnhijacked {
+		require.Error(t, err)
+		require.NoError(t, resp.Body.Close())
+		require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+		require.NotSubset(t, resp.Header, expectedHeaders)
+
+		return
+	}
+
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, http.StatusSwitchingProtocols, resp.StatusCode)
+	require.Subset(t, resp.Header, expectedHeaders)
+
+	require.NoError(t, conn.WriteMessage(websocket.TextMessage, message))
+
+	kind, readded, err := conn.ReadMessage()
+	require.NoError(t, err)
+	require.Equal(t, message, readded)
+	require.Equal(t, websocket.TextMessage, kind)
 }
 
 func prepareMessage(t *testing.T, size int) []byte {

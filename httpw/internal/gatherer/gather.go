@@ -3,7 +3,9 @@
 package gatherer
 
 import (
+	"bufio"
 	"bytes"
+	"net"
 	"net/http"
 )
 
@@ -11,17 +13,31 @@ import (
 type Gatherer struct {
 	buffer     bytes.Buffer
 	headers    http.Header
+	hijacked   bool
 	statusCode int
+	underlying http.ResponseWriter
 }
 
-// Creates a new gatherer.
-func New() *Gatherer {
+// Creates a new gatherer with underlying [http.ResponseWriter].
+func New(underlying http.ResponseWriter) *Gatherer {
 	ghr := &Gatherer{
 		headers:    make(http.Header),
 		statusCode: -1,
+		underlying: underlying,
 	}
 
 	return ghr
+}
+
+func (ghr *Gatherer) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, casted := ghr.underlying.(http.Hijacker)
+	if !casted {
+		return nil, nil, http.ErrNotSupported
+	}
+
+	ghr.hijacked = true
+
+	return hijacker.Hijack()
 }
 
 // Implements the [http.ResponseWriter] interface.
@@ -50,16 +66,20 @@ func (ghr *Gatherer) StatusCode() int {
 }
 
 // Passes a gathered data to the underlying [http.ResponseWriter].
-func (ghr *Gatherer) Pass(underlying http.ResponseWriter) (int, error) {
+func (ghr *Gatherer) Pass() (int, error) {
+	if ghr.hijacked {
+		return 0, nil
+	}
+
 	for key, values := range ghr.Header() {
 		for _, value := range values {
-			underlying.Header().Add(key, value)
+			ghr.underlying.Header().Add(key, value)
 		}
 	}
 
 	if ghr.statusCode != -1 {
-		underlying.WriteHeader(ghr.StatusCode())
+		ghr.underlying.WriteHeader(ghr.StatusCode())
 	}
 
-	return underlying.Write(ghr.Body())
+	return ghr.underlying.Write(ghr.Body())
 }

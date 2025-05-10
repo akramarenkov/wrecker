@@ -126,21 +126,21 @@ func (hdl *Handler) ServeHTTP(wrt http.ResponseWriter, req *http.Request) {
 	}
 
 	for _, blocker := range hdl.opts.Blockers {
-		cloned := req.Clone(req.Context())
-		cloned.Body = io.NopCloser(bytes.NewBuffer(body))
+		blockerRequest := req.Clone(req.Context())
+		blockerRequest.Body = io.NopCloser(bytes.NewBuffer(body))
 
-		if block := blocker(cloned); block {
+		if block := blocker(blockerRequest); block {
 			wrt.WriteHeader(http.StatusForbidden)
 			return
 		}
 	}
 
-	ghr := gatherer.New()
+	proxyRequest := req.Clone(req.Context())
+	proxyRequest.Body = io.NopCloser(bytes.NewBuffer(body))
 
-	cloned := req.Clone(req.Context())
-	cloned.Body = io.NopCloser(bytes.NewBuffer(body))
+	ghr := gatherer.New(wrt)
 
-	hdl.proxy.ServeHTTP(ghr, cloned)
+	hdl.proxy.ServeHTTP(ghr, proxyRequest)
 
 	for _, spoiler := range hdl.opts.Spoilers {
 		headers := maps.Clone(ghr.Header())
@@ -152,5 +152,5 @@ func (hdl *Handler) ServeHTTP(wrt http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	_, _ = ghr.Pass(wrt)
+	_, _ = ghr.Pass()
 }
