@@ -1,5 +1,5 @@
 // Internal package with Gatherer that gathers response body, stores headers and
-// response status code without passing them to a underlying [http.ResponseWriter].
+// response status code.
 package gatherer
 
 import (
@@ -7,8 +7,7 @@ import (
 	"net/http"
 )
 
-// Gathers response body, stores headers and response status code without passing
-// them to a underlying [http.ResponseWriter].
+// Gathers response body, stores headers and response status code.
 type Gatherer struct {
 	buffer     bytes.Buffer
 	headers    http.Header
