@@ -126,27 +126,34 @@ func (hdl *Handler) ServeHTTP(wrt http.ResponseWriter, req *http.Request) {
 	}
 
 	for _, blocker := range hdl.opts.Blockers {
-		blockerRequest := req.Clone(req.Context())
-		blockerRequest.Body = io.NopCloser(bytes.NewBuffer(body))
+		request := req.Clone(req.Context())
+		request.Body = io.NopCloser(bytes.NewBuffer(body))
 
-		if block := blocker(blockerRequest); block {
+		if block := blocker(request); block {
 			wrt.WriteHeader(http.StatusForbidden)
 			return
 		}
 	}
 
-	proxyRequest := req.Clone(req.Context())
-	proxyRequest.Body = io.NopCloser(bytes.NewBuffer(body))
+	request := req.Clone(req.Context())
+	request.Body = io.NopCloser(bytes.NewBuffer(body))
 
 	ghr := gatherer.New(wrt)
 
-	hdl.proxy.ServeHTTP(ghr, proxyRequest)
+	hdl.proxy.ServeHTTP(ghr, request)
 
 	for _, spoiler := range hdl.opts.Spoilers {
-		headers := maps.Clone(ghr.Header())
-		body := slices.Clone(ghr.Body())
+		request := req.Clone(req.Context())
+		request.Body = io.NopCloser(bytes.NewBuffer(body))
 
-		if spoil := spoiler(headers, ghr.StatusCode(), body); spoil {
+		resp := &Response{
+			Body:       slices.Clone(ghr.Body()),
+			Header:     maps.Clone(ghr.Header()),
+			Request:    request,
+			StatusCode: ghr.StatusCode(),
+		}
+
+		if spoil := spoiler(resp); spoil {
 			wrt.WriteHeader(http.StatusForbidden)
 			return
 		}

@@ -166,8 +166,8 @@ func TestWreckerSpolier(t *testing.T) {
 		badData = "spolier"
 	)
 
-	spolier := func(_ http.Header, _ int, body []byte) bool {
-		return string(body) == badData
+	spolier := func(r *Response) bool {
+		return string(r.Body) == badData
 	}
 
 	message := prepareMessage(t, 1<<10)
