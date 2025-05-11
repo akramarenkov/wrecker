@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -517,7 +518,8 @@ func prepareUpstreamServer(
 		router.HandleFunc(
 			path.Pattern,
 			func(w http.ResponseWriter, _ *http.Request) {
-				_, _ = w.Write(path.Message)
+				_, err := w.Write(path.Message)
+				assert.NoError(t, err)
 			},
 		)
 	}

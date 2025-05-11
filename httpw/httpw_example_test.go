@@ -27,14 +27,20 @@ func ExampleWrecker() {
 	upstreamRouter.HandleFunc(
 		"/api",
 		func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = w.Write(message)
+			_, err := w.Write(message)
+			if err != nil {
+				fmt.Println(err)
+			}
 		},
 	)
 
 	upstreamRouter.HandleFunc(
 		"/forbidden",
 		func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = w.Write(message)
+			_, err := w.Write(message)
+			if err != nil {
+				fmt.Println(err)
+			}
 		},
 	)
 
