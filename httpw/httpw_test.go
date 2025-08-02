@@ -443,7 +443,9 @@ func TestRunBadUpstreamURL(t *testing.T) {
 }
 
 func TestRunListenFailed(t *testing.T) {
-	upstreamListener, err := net.Listen("tcp", "127.0.0.1:")
+	var blank net.ListenConfig
+
+	upstreamListener, err := blank.Listen(t.Context(), "tcp", "127.0.0.1:")
 	require.NoError(t, err)
 
 	defer upstreamListener.Close()
@@ -532,6 +534,7 @@ func prepareUpstreamServer(
 
 	go func() {
 		serverErr <- server.Serve(listener)
+
 		close(serverErr)
 	}()
 
@@ -542,21 +545,27 @@ func prepareUpstreamListener(t *testing.T, useUpstreamUnix bool, tlsConfig *tls.
 	if useUpstreamUnix {
 		socketPath := filepath.Join(t.TempDir(), "upstream.sock")
 
-		listener, err := selectListener("unix", socketPath, tlsConfig)
+		listener, err := selectListener(t, "unix", socketPath, tlsConfig)
 		require.NoError(t, err)
 
 		return listener
 	}
 
-	listener, err := selectListener("tcp", "127.0.0.1:", tlsConfig)
+	listener, err := selectListener(t, "tcp", "127.0.0.1:", tlsConfig)
 	require.NoError(t, err)
 
 	return listener
 }
 
-func selectListener(network, address string, tlsConfig *tls.Config) (net.Listener, error) {
+func selectListener(
+	t *testing.T,
+	network string,
+	address string,
+	tlsConfig *tls.Config,
+) (net.Listener, error) {
 	if tlsConfig == nil {
-		return net.Listen(network, address)
+		var blank net.ListenConfig
+		return blank.Listen(t.Context(), network, address)
 	}
 
 	return tls.Listen(network, address, tlsConfig)

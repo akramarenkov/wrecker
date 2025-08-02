@@ -39,7 +39,9 @@ func TestUnhijacked(t *testing.T) {
 		},
 	)
 
-	listener, err := net.Listen("tcp", "127.0.0.1:")
+	var blank net.ListenConfig
+
+	listener, err := blank.Listen(t.Context(), "tcp", "127.0.0.1:")
 	require.NoError(t, err)
 
 	defer listener.Close()
@@ -53,6 +55,7 @@ func TestUnhijacked(t *testing.T) {
 
 	go func() {
 		serverErr <- server.Serve(listener)
+
 		close(serverErr)
 	}()
 

@@ -82,7 +82,10 @@ func prepareListener(srv *http.Server, network, address string) (net.Listener, e
 		return tls.Listen(network, address, srv.TLSConfig)
 	}
 
-	return net.Listen(network, address)
+	var blank net.ListenConfig
+
+	// The Shutdown and Close methods are used to shut down the server normally
+	return blank.Listen(context.Background(), network, address)
 }
 
 func prepareServer(srv *http.Server, handler *Handler) *http.Server {

@@ -189,7 +189,9 @@ func testGathererBase(
 		},
 	)
 
-	listener, err := net.Listen("tcp", "127.0.0.1:")
+	var blank net.ListenConfig
+
+	listener, err := blank.Listen(t.Context(), "tcp", "127.0.0.1:")
 	require.NoError(t, err)
 
 	defer listener.Close()
@@ -203,6 +205,7 @@ func testGathererBase(
 
 	go func() {
 		serverErr <- server.Serve(listener)
+
 		close(serverErr)
 	}()
 
@@ -300,7 +303,9 @@ func testGathererWebSocketBase(t *testing.T, useUnhijacked bool) {
 		},
 	)
 
-	listener, err := net.Listen("tcp", "127.0.0.1:")
+	var blank net.ListenConfig
+
+	listener, err := blank.Listen(t.Context(), "tcp", "127.0.0.1:")
 	require.NoError(t, err)
 
 	defer listener.Close()
@@ -314,6 +319,7 @@ func testGathererWebSocketBase(t *testing.T, useUnhijacked bool) {
 
 	go func() {
 		serverErr <- server.Serve(listener)
+
 		close(serverErr)
 	}()
 
